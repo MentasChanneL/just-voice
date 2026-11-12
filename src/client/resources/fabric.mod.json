@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "justvoice",
+  "version": "${version}",
+  "name": "Just Voice",
+  "description": "Client-side voice chat for Minecraft using an external Mumble-compatible voice server.",
+  "authors": [
+    "MentasChanneL"
+  ],
+  "contact": {
+    "sources": "https://github.com/MentasChanneL/just-voice",
+    "issues": "https://github.com/MentasChanneL/just-voice/issues"
+  },
+  "license": "All-Rights-Reserved",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dev.mentaschannel.justvoice.JustVoiceClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.20.1",
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}
