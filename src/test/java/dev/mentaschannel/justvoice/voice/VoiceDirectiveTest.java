@@ -8,12 +8,12 @@ final class VoiceDirectiveTest {
     private static final String VALID_TOKEN = "abcdefghijklmnopqrstuvwxYZ0123456789_-ABC";
 
     @Test
-    void parsesInviteWithOpaqueTicket() {
-        VoiceDirective directive = VoiceDirective.parse("@VOICE INVITE " + VALID_TICKET);
+    void parsesInviteWithOpaqueToken() {
+        VoiceDirective directive = VoiceDirective.parse("@VOICE INVITE " + VALID_TOKEN);
 
         assertNotNull(directive);
         assertEquals(VoiceDirective.Type.INVITE, directive.type());
-        assertEquals(VALID_TICKET, directive.token());
+        assertEquals(VALID_TOKEN, directive.token());
     }
 
     @Test
@@ -22,37 +22,37 @@ final class VoiceDirectiveTest {
 
         assertNotNull(directive);
         assertEquals(VoiceDirective.Type.CLOSE, directive.type());
-        assertNull(directive.ticket());
+        assertNull(directive.token());
     }
 
     @Test
     void directiveKeywordsAreCaseInsensitiveAndWhitespaceTolerant() {
-        VoiceDirective directive = VoiceDirective.parse("  @voice   invite   " + VALID_TICKET + "  ");
+        VoiceDirective directive = VoiceDirective.parse("  @voice   invite   " + VALID_TOKEN + "  ");
 
         assertNotNull(directive);
         assertEquals(VoiceDirective.Type.INVITE, directive.type());
     }
 
     @Test
-    void rejectsInviteWithoutTicket() {
+    void rejectsInviteWithoutToken() {
         assertNull(VoiceDirective.parse("@VOICE INVITE"));
     }
 
     @Test
-    void rejectsShortOrMalformedTicket() {
+    void rejectsShortOrMalformedToken() {
         assertNull(VoiceDirective.parse("@VOICE INVITE too-short"));
-        assertNull(VoiceDirective.parse("@VOICE INVITE ticket.with.dots"));
+        assertNull(VoiceDirective.parse("@VOICE INVITE token.with.dots"));
     }
 
     @Test
     void rejectsExtraArguments() {
         assertNull(VoiceDirective.parse("@VOICE CLOSE extra"));
-        assertNull(VoiceDirective.parse("@VOICE INVITE " + VALID_TICKET + " extra"));
+        assertNull(VoiceDirective.parse("@VOICE INVITE " + VALID_TOKEN + " extra"));
     }
 
     @Test
     void onlyRecognizesStandaloneVoiceMarker() {
-        assertTrue(VoiceDirective.hasMarker("@VOICE INVITE " + VALID_TICKET));
+        assertTrue(VoiceDirective.hasMarker("@VOICE INVITE " + VALID_TOKEN));
         assertTrue(VoiceDirective.hasMarker("  @VOICE CLOSE"));
         assertFalse(VoiceDirective.hasMarker("Player: @VOICE CLOSE"));
         assertFalse(VoiceDirective.hasMarker("@VOICEMAIL something"));
@@ -61,11 +61,11 @@ final class VoiceDirectiveTest {
     }
 
     @Test
-    void doesNotIncludeTicketInToString() {
-        VoiceDirective directive = VoiceDirective.parse("@VOICE INVITE " + VALID_TICKET);
+    void doesNotIncludeTokenInToString() {
+        VoiceDirective directive = VoiceDirective.parse("@VOICE INVITE " + VALID_TOKEN);
 
         assertNotNull(directive);
-        assertFalse(directive.toString().contains(VALID_TICKET));
+        assertFalse(directive.toString().contains(VALID_TOKEN));
         assertTrue(directive.toString().contains("<redacted>"));
     }
 }
