@@ -1,6 +1,5 @@
 package dev.mentaschannel.justvoice.voice;
 
-import java.util.Locale;
 import java.util.regex.Pattern;
 
 /**
