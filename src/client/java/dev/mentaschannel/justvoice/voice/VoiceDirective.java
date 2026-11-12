@@ -3,17 +3,16 @@ package dev.mentaschannel.justvoice.voice;
 import java.util.regex.Pattern;
 
 /**
- * Parses control directives only after the Fabric system-message event has
- * established that a message was sent by the world/server, not by a player.
+ * Parses directives only after Fabric has identified a server/game system message.
  *
- * INVITE carries an opaque single-use backend ticket:
- *     @VOICE INVITE <ticket>
+ * INVITE carries the actual opaque Mumble ACL token:
+ *     @VOICE INVITE <token>
  *
- * CLOSE revokes the current local voice session:
+ * CLOSE clears the local voice session:
  *     @VOICE CLOSE
  */
-public record VoiceDirective(Type type, String ticket) {
-    private static final Pattern TICKET_PATTERN = Pattern.compile("[A-Za-z0-9_-]{32,128}");
+public record VoiceDirective(Type type, String token) {
+    private static final Pattern TOKEN_PATTERN = Pattern.compile("[A-Za-z0-9_-]{32,128}");
 
     public enum Type {
         INVITE,
@@ -42,7 +41,7 @@ public record VoiceDirective(Type type, String ticket) {
         if (parts.length == 3
                 && parts[0].equalsIgnoreCase("@VOICE")
                 && parts[1].equalsIgnoreCase("INVITE")
-                && TICKET_PATTERN.matcher(parts[2]).matches()) {
+                && TOKEN_PATTERN.matcher(parts[2]).matches()) {
             return new VoiceDirective(Type.INVITE, parts[2]);
         }
 
@@ -58,7 +57,7 @@ public record VoiceDirective(Type type, String ticket) {
     @Override
     public String toString() {
         return type == Type.INVITE
-                ? "VoiceDirective[INVITE, ticket=<redacted>]"
+                ? "VoiceDirective[INVITE, token=<redacted>]"
                 : "VoiceDirective[CLOSE]";
     }
 }

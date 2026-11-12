@@ -2,54 +2,62 @@
 
 ## Components
 
-1. **Fabric client mod** — runs only on the player's Minecraft client. It parses world-generated voice directives, redeems player-scoped invitations, captures and plays audio, and connects directly to the voice server.
-2. **Python backend** — receives authenticated requests from Creative+ world code, manages rooms and player permissions, and exchanges short-lived invitation credentials.
-3. **Murmur 1.3.4** — carries voice traffic. Clients connect directly to its normal Mumble endpoint; the Minecraft server does not host voice traffic.
+1. **Fabric client mod** — parses world-generated voice directives, stores its own Mumble username and access token in memory, and will connect directly to the Mumble voice server.
+2. **Minecraft world/module** — owns player identity and its mapping from player UUID/name to opaque Mumble token. It manages room lifetime and sends the token only to the intended player.
+3. **Python backend** — a stateless-in-purpose bridge with an in-memory room map. It creates/removes Mumble channels and adds/removes opaque ACL tokens. It does not receive player names or UUIDs.
+4. **Murmur 1.3.4** — stores channels and ACLs and carries voice traffic. Clients connect directly to its normal Mumble endpoint.
 
 No Minecraft server-side mod or plugin is required.
 
+## Backend state
+
+The backend keeps only:
+
+\`\`\`python
+rooms: dict[str, Room]
+
+@dataclass
+class Room:
+    channel_id: int
+    last_heartbeat: float
+    tokens: set[str]
+\`\`\`
+
+The dictionary key is the world ID from the \`X-World-ID\` HTTP header. The world sends a heartbeat every 10 seconds; after 30 seconds without one, the backend deletes the room. Rooms and tokens are not persisted. On backend restart, leftover \`JV-\` channels under the dedicated parent channel are removed. Run one backend worker so all requests share the same memory map.
+
 ## Trust boundaries
 
-- The Fabric mod contains no Mumble administration password, backend API key, or world secret.
-- World-to-backend calls use HTTPS and server-side credentials kept in the world/module configuration.
-- An invitation ticket is scoped to one player and one room, expires quickly, and can only be redeemed once.
-- The backend owns revocation. A client-side `@VOICE CLOSE` handler clears local credentials immediately, while server-side ACL revocation and session removal remain authoritative.
+- World-to-backend requests use HTTPS and both \`X-World-ID\` and \`X-World-API-Key\` headers. The world ID is an identifier, not a secret; the API key authenticates the caller.
+- Keep the API key in server-side world/module configuration. Never send it to a player client.
+- The Fabric mod receives only the per-room Mumble token for the intended player.
+- The backend does not store or receive Minecraft player identities.
 - Murmur ICE must remain disabled or bound to loopback; it is not part of the public architecture.
 
 ## World directives
 
-The client uses Fabric's server/game-message receive event. This is intentionally separate from the player-chat event, so a player typing a fake `@VOICE` command is not treated as a world directive.
+The client uses Fabric's server/game-message receive event, separate from player chat:
 
-- `@VOICE INVITE <ticket>` — redeem the opaque single-use ticket over HTTPS, scoped to the local Minecraft username.
-- `@VOICE CLOSE` — clear the local voice session and invalidate any in-flight invitation redemption.
-- A disconnect from the Minecraft world also clears local credentials.
+- \`@VOICE INVITE <token>\` — store the Mumble ACL token locally. The token is passed directly to Mumble authentication; there is no HTTP redemption.
+- \`@VOICE CLOSE\` — clear the local voice session.
+- A Minecraft world disconnect also clears local credentials.
 
-The ticket argument after INVITE is the current proposed syntax, not yet verified against the Creative+ message API. Control messages are hidden from the visible chat to avoid exposing the ticket in history.
+Control messages are hidden from visible chat so the token is not copied into history.
 
-## Backend redemption
+## World/backend flow
 
-The mod sends only the one-time ticket and its local player name to `POST /v1/invites/redeem`. The response contains a Mumble endpoint, username, and player-specific ACL token. The mod keeps these credentials in memory only. It never receives the backend world API key or Murmur service account password.
-
-HTTPS redirects are disabled for ticket redemption so the ticket cannot be forwarded automatically to another host.
+1. The world calls \`POST /v1/rooms\` with its world ID and API key headers.
+2. When inviting a player, the world calls \`POST /v1/tokens\`. The backend creates a random token, adds its ACL entry, and returns the token.
+3. The world stores \`player_uuid -> token\` in its own data and sends \`@VOICE INVITE <token>\` privately to the target player.
+4. When the player leaves, the world calls \`POST /v1/tokens/revoke\` with the token and sends \`@VOICE CLOSE\` to the player.
+5. The world sends \`POST /v1/rooms/heartbeat\` every 10 seconds. On shutdown it calls \`DELETE /v1/rooms\`.
 
 ## Voice transport
 
-The client implementation targets the Mumble 1.3.4 protocol:
+The Mumble client implementation still needs:
 
 - TLS-protected TCP connection for authentication and control messages.
 - Encrypted UDP voice packets using the Mumble 1.3.4 crypto protocol.
-- Opus for voice encoding and decoding.
+- Opus voice encoding and decoding.
 
-The mod implements the client functionality itself; players do not need to install the standalone Mumble application.
+Players do not need the standalone Mumble application; the mod will implement the client functionality itself.
 
-## First vertical slice
-
-1. Verify the world can send a per-player system message containing the invite ticket.
-2. Verify the Python backend service account can authenticate to Murmur over TLS.
-3. Create a channel through the Mumble client protocol.
-4. Set the channel ACL to grant a test access token.
-5. Connect a test client using that token.
-6. Revoke the ACL token and remove the active session.
-7. Implement the Fabric Mumble voice transport and microphone/playback path.
-
-See [Mumble control-plane notes](https://github.com/MentasChanneL/just-voice-backend/blob/main/docs/mumble-control-plane.md).

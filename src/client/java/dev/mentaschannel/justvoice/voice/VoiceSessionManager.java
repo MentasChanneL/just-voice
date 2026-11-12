@@ -4,51 +4,43 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Optional;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Holds redeemed credentials only in memory until CLOSE or world disconnect.
- *
- * The request generation prevents a slow INVITE response from re-opening voice
- * after a later CLOSE directive has already been received.
+ * Holds the token sent directly by the Minecraft world until CLOSE or disconnect.
+ * The backend never needs to redeem the token or know which player owns it.
  */
 public final class VoiceSessionManager {
     private static final Logger LOGGER = LoggerFactory.getLogger("justvoice");
 
-    private final VoiceBackendClient backendClient;
-    private final AtomicLong generation = new AtomicLong();
+    private final VoiceClientConfig config;
     private final AtomicReference<VoiceCredentials> credentials = new AtomicReference<>();
 
-    public VoiceSessionManager(VoiceBackendClient backendClient) {
-        this.backendClient = backendClient;
+    public VoiceSessionManager(VoiceClientConfig config) {
+        this.config = config;
     }
 
-    public void invite(String ticket, String playerName) {
-        long requestGeneration = generation.incrementAndGet();
+    public void invite(String token, String playerName) {
         credentials.set(null);
+        if (!config.isConfigured()) {
+            LOGGER.warn("Cannot accept Just Voice invitation: Mumble host is not configured.");
+            return;
+        }
 
-        backendClient.redeemInvite(ticket, playerName).whenComplete((redeemed, throwable) -> {
-            if (generation.get() != requestGeneration) {
-                return;
-            }
-
-            if (throwable != null) {
-                Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
-                        ? throwable.getCause()
-                        : throwable;
-                LOGGER.warn("Could not redeem Just Voice invitation: {}", cause.getMessage());
-                return;
-            }
-
-            credentials.set(redeemed);
-            LOGGER.info("Just Voice invitation accepted; voice credentials are ready.");
-        });
+        try {
+            credentials.set(new VoiceCredentials(
+                    config.mumbleHost(),
+                    config.mumblePort(),
+                    playerName,
+                    token
+            ));
+            LOGGER.info("Just Voice invitation accepted; Mumble credentials are ready.");
+        } catch (IllegalArgumentException exception) {
+            LOGGER.warn("Ignored invalid Just Voice invitation token.");
+        }
     }
 
     public void close() {
-        generation.incrementAndGet();
         credentials.set(null);
     }
 

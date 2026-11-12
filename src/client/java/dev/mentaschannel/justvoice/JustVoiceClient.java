@@ -1,6 +1,5 @@
 package dev.mentaschannel.justvoice;
 
-import dev.mentaschannel.justvoice.voice.VoiceBackendClient;
 import dev.mentaschannel.justvoice.voice.VoiceClientConfig;
 import dev.mentaschannel.justvoice.voice.VoiceDirective;
 import dev.mentaschannel.justvoice.voice.VoiceSessionManager;
@@ -26,10 +25,9 @@ public final class JustVoiceClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         VoiceClientConfig config = VoiceClientConfig.load(FabricLoader.getInstance().getConfigDir());
-        if (config.backendUri() != null) {
-            sessionManager = new VoiceSessionManager(new VoiceBackendClient(config.backendUri()));
-        } else {
-            LOGGER.warn("Just Voice is installed, but the backend URL is not configured.");
+        sessionManager = new VoiceSessionManager(config);
+        if (!config.isConfigured()) {
+            LOGGER.warn("Just Voice Mumble host is not configured; edit config/just-voice.properties.");
         }
 
         ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
@@ -38,22 +36,16 @@ public final class JustVoiceClient implements ClientModInitializer {
                 return true;
             }
 
-            // Hide control messages: INVITE contains a single-use ticket and
-            // must not be copied into chat history or exposed on screen.
+            // Hide control messages: INVITE contains a live Mumble ACL token.
             VoiceDirective directive = VoiceDirective.parse(content);
             if (directive == null) {
                 LOGGER.warn("Ignored malformed @VOICE system directive.");
                 return false;
             }
 
-            if (sessionManager == null) {
-                LOGGER.warn("Ignored @VOICE directive because the backend URL is not configured.");
-                return false;
-            }
-
             switch (directive.type()) {
                 case INVITE -> sessionManager.invite(
-                        directive.ticket(),
+                        directive.token(),
                         Minecraft.getInstance().getUser().getName()
                 );
                 case CLOSE -> sessionManager.close();

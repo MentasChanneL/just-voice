@@ -1,8 +1,8 @@
 package dev.mentaschannel.justvoice.voice;
 
 /**
- * Short-lived in-memory voice credentials returned by the backend.
- * Never persist or log this record: the access token is a live Mumble ACL token.
+ * In-memory connection details assembled locally from config and the world directive.
+ * Never persist or log the access token: it is a live Mumble ACL credential.
  */
 public record VoiceCredentials(
         String host,
@@ -20,8 +20,8 @@ public record VoiceCredentials(
         if (username == null || username.isBlank()) {
             throw new IllegalArgumentException("Invalid Mumble username");
         }
-        if (accessToken == null || accessToken.isBlank()) {
-            throw new IllegalArgumentException("Missing Mumble access token");
+        if (accessToken == null || !accessToken.matches("[A-Za-z0-9_-]{32,128}")) {
+            throw new IllegalArgumentException("Invalid Mumble access token");
         }
     }
 
