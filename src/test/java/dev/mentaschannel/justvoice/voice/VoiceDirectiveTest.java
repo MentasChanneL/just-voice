@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 final class VoiceDirectiveTest {
-    private static final String VALID_TICKET = "abcdefghijklmnopqrstuvwxYZ0123456789_-ABC";
+    private static final String VALID_TOKEN = "abcdefghijklmnopqrstuvwxYZ0123456789_-ABC";
 
     @Test
     void parsesInviteWithOpaqueTicket() {
@@ -13,7 +13,7 @@ final class VoiceDirectiveTest {
 
         assertNotNull(directive);
         assertEquals(VoiceDirective.Type.INVITE, directive.type());
-        assertEquals(VALID_TICKET, directive.ticket());
+        assertEquals(VALID_TICKET, directive.token());
     }
 
     @Test
