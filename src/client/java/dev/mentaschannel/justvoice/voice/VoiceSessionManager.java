@@ -110,7 +110,9 @@ public final class VoiceSessionManager {
                     candidate.close();
                     return;
                 }
-                playback = new AudioPlayback();
+                playback = new AudioPlayback(
+                        peerId -> lastVoiceAtNanos.put(peerId, System.nanoTime())
+                );
                 playback.start();
                 LOGGER.info("Just Voice session is ready. Hold V to talk.");
                 showStatus("Just Voice: Connected", HudTone.SUCCESS);
@@ -132,8 +134,6 @@ public final class VoiceSessionManager {
     }
 
     private void receiveVoicePacket(IncomingVoiceFrame frame) {
-        long now = System.nanoTime();
-        lastVoiceAtNanos.put(frame.peerId(), now);
         AudioPlayback currentPlayback = playback;
         if (currentPlayback != null) {
             currentPlayback.enqueue(frame);
@@ -183,7 +183,7 @@ public final class VoiceSessionManager {
             return;
         }
         current.sendVoice(frame);
-        if (current.isTransmittingVoice()) {
+        if (current.isTransmittingVoice() && microphoneLevel >= 0.03f) {
             lastVoiceAtNanos.put(current.selfPeerId(), System.nanoTime());
         }
     }
