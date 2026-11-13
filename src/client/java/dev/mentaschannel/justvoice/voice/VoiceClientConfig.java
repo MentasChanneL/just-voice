@@ -9,13 +9,14 @@ import java.util.Properties;
 import java.util.logging.Logger;
 
 /**
- * Public Mumble endpoint configuration. No backend API or Mumble service secret
- * is stored in the player client.
+ * Public voice-server endpoint configuration. No world API key is ever
+ * stored in the player client.
  */
-public record VoiceClientConfig(String mumbleHost, int mumblePort) {
+public record VoiceClientConfig(String voiceHost, int voicePort, Path certificateFile) {
     private static final Logger LOGGER = Logger.getLogger("justvoice");
-    private static final String MUMBLE_HOST_KEY = "mumble-host";
-    private static final String MUMBLE_PORT_KEY = "mumble-port";
+    private static final String HOST_KEY = "voice-host";
+    private static final String PORT_KEY = "voice-port";
+    private static final String CERT_KEY = "ca-cert-file";
     private static final String HOST_PLACEHOLDER = "voice.example.invalid";
 
     public static VoiceClientConfig load(Path configDirectory) {
@@ -23,15 +24,13 @@ public record VoiceClientConfig(String mumbleHost, int mumblePort) {
         Properties properties = new Properties();
 
         if (Files.notExists(configFile)) {
-            properties.setProperty(MUMBLE_HOST_KEY, HOST_PLACEHOLDER);
-            properties.setProperty(MUMBLE_PORT_KEY, "64738");
+            properties.setProperty(HOST_KEY, HOST_PLACEHOLDER);
+            properties.setProperty(PORT_KEY, "24454");
+            properties.setProperty(CERT_KEY, "");
             try {
                 Files.createDirectories(configDirectory);
                 try (Writer writer = Files.newBufferedWriter(configFile)) {
-                    properties.store(
-                            writer,
-                            "Just Voice public Mumble server configuration."
-                    );
+                    properties.store(writer, "Just Voice QUIC server configuration.");
                 }
             } catch (IOException exception) {
                 LOGGER.warning("Could not create Just Voice configuration: " + exception.getMessage());
@@ -44,8 +43,9 @@ public record VoiceClientConfig(String mumbleHost, int mumblePort) {
             }
         }
 
-        String host = properties.getProperty(MUMBLE_HOST_KEY, "").trim();
-        int port = parsePort(properties.getProperty(MUMBLE_PORT_KEY, "64738"));
+        String host = properties.getProperty(HOST_KEY, "").trim();
+        int port = parsePort(properties.getProperty(PORT_KEY, "24454"));
+        Path certificate = parseCertificate(properties.getProperty(CERT_KEY, ""));
 
         if (host.equalsIgnoreCase(HOST_PLACEHOLDER)
                 || host.contains("/")
@@ -54,11 +54,7 @@ public record VoiceClientConfig(String mumbleHost, int mumblePort) {
             host = "";
         }
 
-        VoiceClientConfig config = new VoiceClientConfig(host, port);
-        if (!config.isConfigured()) {
-            LOGGER.warning("Set mumble-host and mumble-port in config/just-voice.properties.");
-        }
-        return config;
+        return new VoiceClientConfig(host, port, certificate);
     }
 
     private static int parsePort(String value) {
@@ -70,10 +66,29 @@ public record VoiceClientConfig(String mumbleHost, int mumblePort) {
         }
     }
 
+    private static Path parseCertificate(String value) {
+        String trimmed = value == null ? "" : value.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+
+        try {
+            Path path = Path.of(trimmed).toAbsolutePath().normalize();
+            if (!Files.isRegularFile(path) || !Files.isReadable(path)) {
+                LOGGER.warning("Configured CA certificate file is not readable.");
+                return null;
+            }
+            return path;
+        } catch (RuntimeException exception) {
+            LOGGER.warning("Configured CA certificate path is invalid.");
+            return null;
+        }
+    }
+
     public boolean isConfigured() {
-        return mumbleHost != null
-                && !mumbleHost.isBlank()
-                && mumblePort >= 1
-                && mumblePort <= 65535;
+        return voiceHost != null
+                && !voiceHost.isBlank()
+                && voicePort >= 1
+                && voicePort <= 65535;
     }
 }

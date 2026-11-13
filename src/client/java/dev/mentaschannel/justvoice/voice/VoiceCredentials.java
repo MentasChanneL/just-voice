@@ -1,33 +1,32 @@
 package dev.mentaschannel.justvoice.voice;
 
+import java.nio.file.Path;
+
 /**
- * In-memory connection details assembled locally from config and the world directive.
- * Never persist or log the access token: it is a live Mumble ACL credential.
+ * Temporary connection details assembled from local config and the private
+ * world directive. The access token must never be persisted or logged.
  */
 public record VoiceCredentials(
         String host,
         int port,
-        String username,
+        Path certificateFile,
         String accessToken
 ) {
     public VoiceCredentials {
         if (host == null || host.isBlank() || host.contains("/") || host.contains("@")) {
-            throw new IllegalArgumentException("Invalid Mumble host");
+            throw new IllegalArgumentException("Invalid voice server host");
         }
         if (port < 1 || port > 65535) {
-            throw new IllegalArgumentException("Invalid Mumble port");
-        }
-        if (username == null || username.isBlank()) {
-            throw new IllegalArgumentException("Invalid Mumble username");
+            throw new IllegalArgumentException("Invalid voice server port");
         }
         if (accessToken == null || !accessToken.matches("[A-Za-z0-9_-]{32,128}")) {
-            throw new IllegalArgumentException("Invalid Mumble access token");
+            throw new IllegalArgumentException("Invalid voice access token");
         }
     }
 
     @Override
     public String toString() {
-        return "VoiceCredentials[host=%s, port=%d, username=%s, accessToken=<redacted>]"
-                .formatted(host, port, username);
+        return "VoiceCredentials[host=%s, port=%d, accessToken=<redacted>]"
+                .formatted(host, port);
     }
 }

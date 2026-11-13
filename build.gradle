@@ -10,7 +10,7 @@ base {
 }
 
 repositories {
-    // Loom provides the Minecraft and Fabric repositories.
+    mavenCentral()
 }
 
 loom {
@@ -28,6 +28,16 @@ dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+    // Pure-Java QUIC implementation and its runtime dependencies.
+    include(implementation("tech.kwik:kwik:0.12.2"))
+    include(implementation("tech.kwik:agent15:4.0"))
+    include(implementation("at.favre.lib:hkdf:2.0.0"))
+    include(implementation("com.io7m.repackage.io.whitfin:io.whitfin.siphash:2.0.1"))
+
+    // Portable Java Opus implementation.
+    include(implementation("io.github.jaredmdobson:concentus:1.0.2"))
+
     testImplementation "org.junit.jupiter:junit-jupiter:5.12.2"
     testRuntimeOnly "org.junit.platform:junit-platform-launcher:1.12.2"
 }

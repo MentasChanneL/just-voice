@@ -3,7 +3,7 @@
   "id": "justvoice",
   "version": "${version}",
   "name": "Just Voice",
-  "description": "Client-side voice chat for Minecraft using an external Mumble-compatible voice server.",
+  "description": "Client-side push-to-talk voice chat for the standalone Just Voice QUIC server.",
   "authors": [
     "MentasChanneL"
   ],

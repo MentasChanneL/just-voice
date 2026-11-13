@@ -5,7 +5,7 @@ import java.util.regex.Pattern;
 /**
  * Parses directives only after Fabric has identified a server/game system message.
  *
- * INVITE carries the actual opaque Mumble ACL token:
+ * INVITE carries the opaque Just Voice session token:
  *     @VOICE INVITE <token>
  *
  * CLOSE clears the local voice session:
