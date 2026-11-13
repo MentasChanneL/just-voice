@@ -163,9 +163,6 @@ public final class VoiceSessionManager {
         if (microphoneUnavailable || microphone != null) {
             return;
         }
-        if (microphone != null) {
-            return;
-        }
 
         long currentGeneration = generation;
         microphone = new MicrophoneCapture(
