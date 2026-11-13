@@ -6,7 +6,7 @@ The mod connects directly to a standalone **Just Voice Server** over QUIC. The M
 
 ## Player-facing behaviour
 
-The mod accepts voice directives only from server-sent **action-bar messages** (not player-authored chat):
+The mod accepts voice directives only from server-sent **action-bar packets** (not player-authored chat). It intercepts the dedicated `/title actionbar` packet before vanilla renders it; overlay-flagged system-chat messages are also supported as a fallback.
 
 - `@VOICE INVITE <token>` — replace the current voice session and connect to the configured voice server.
 - `@VOICE CLOSE` — immediately stop capture/playback and close the voice connection.
