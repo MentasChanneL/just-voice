@@ -41,6 +41,7 @@ public final class JustVoiceClient implements ClientModInitializer {
         sessionManager = new VoiceSessionManager(config);
         activeSessionManager = sessionManager;
         SpeakerHudRenderer.register();
+        VoiceOverheadRenderLayer.register();
 
         KeyMapping.Category category = KeyMapping.Category.register(
                 Identifier.fromNamespaceAndPath(MOD_ID, "voice")
