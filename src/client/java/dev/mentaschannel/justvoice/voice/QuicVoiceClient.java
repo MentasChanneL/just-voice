@@ -86,7 +86,13 @@ public final class QuicVoiceClient implements AutoCloseable {
             public void disconnected(ConnectionTerminatedEvent event) {
                 joined = false;
                 if (!closed) {
-                    errorConsumer.accept("Voice server connection closed.");
+                    String detail = "Voice connection closed ("
+                            + (event.closedByPeer() ? "peer" : "local")
+                            + ", " + event.closeReason()
+                            + (event.hasError() ? ", " + event.errorDescription() : "")
+                            + ")";
+                    LOGGER.warn("QUIC connection terminated: {}", detail);
+                    errorConsumer.accept(detail);
                     joinedLatch.countDown();
                 }
             }
@@ -157,8 +163,22 @@ public final class QuicVoiceClient implements AutoCloseable {
         }
 
         if (opcode == OP_ERROR) {
-            String reason = new String(data, 1, data.length - 1, StandardCharsets.UTF_8);
-            errorConsumer.accept(reason.isBlank() ? "Voice server rejected the connection." : reason);
+            String reason;
+            if (data.length == 2) {
+                int errorCode = data[1] & 0xff;
+                reason = switch (errorCode) {
+                    case 0x01 -> "invalid or expired voice token";
+                    case 0x02 -> "voice protocol violation";
+                    case 0x03 -> "server does not support QUIC DATAGRAM";
+                    default -> "unknown voice server error code " + errorCode;
+                };
+            } else {
+                reason = new String(data, 1, data.length - 1, StandardCharsets.UTF_8);
+                if (reason.isBlank()) {
+                    reason = "voice server rejected the connection";
+                }
+            }
+            errorConsumer.accept(reason);
             joinedLatch.countDown();
             return;
         }
