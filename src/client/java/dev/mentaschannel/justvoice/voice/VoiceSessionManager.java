@@ -274,6 +274,34 @@ public final class VoiceSessionManager {
         return List.copyOf(result);
     }
 
+    /**
+     * Returns the active speaker color for a Minecraft name, without the
+     * five-row HUD limit. Used by the per-player overhead render layer.
+     */
+    public Integer getActiveSpeakerColor(String minecraftName) {
+        if (minecraftName == null || minecraftName.isBlank()) {
+            return null;
+        }
+
+        long now = System.nanoTime();
+        long newestActivity = 0L;
+        Integer color = null;
+
+        for (var item : lastVoiceAtNanos.entrySet()) {
+            long activity = item.getValue();
+            if (now - activity > SPEAKER_VISIBLE_NANOS || activity < newestActivity) {
+                continue;
+            }
+
+            VoicePeerProfile profile = peerProfiles.get(item.getKey());
+            if (profile != null && profile.name().equals(minecraftName)) {
+                newestActivity = activity;
+                color = profile.argbColor();
+            }
+        }
+        return color;
+    }
+
     public float getMicrophoneLevel() {
         return microphoneLevel;
     }
