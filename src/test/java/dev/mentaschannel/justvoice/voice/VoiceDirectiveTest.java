@@ -35,7 +35,7 @@ final class VoiceDirectiveTest {
 
     @Test
     void parsesActionBarDirectiveAfterArbitraryLeadingPadding() {
-        String paddedInvite = " ".repeat(512) + "\\t  @VOICE INVITE " + VALID_TOKEN;
+        String paddedInvite = " ".repeat(512) + "\t  @VOICE INVITE " + VALID_TOKEN;
         VoiceDirective directive = VoiceDirective.parse(paddedInvite);
 
         assertNotNull(directive);
