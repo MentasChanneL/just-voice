@@ -16,7 +16,8 @@ import java.util.function.Consumer;
 
 /**
  * Opens the microphone only while push-to-talk is held. Audio is encoded as
- * 20 ms, 48 kHz, mono Opus frames before it is handed to the network client.
+ * 20 ms, 48 kHz, mono Opus frames. The local input meter is calculated from
+ * the PCM samples before encoding.
  */
 public final class MicrophoneCapture implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger("justvoice");
@@ -26,13 +27,19 @@ public final class MicrophoneCapture implements AutoCloseable {
 
     private final Consumer<byte[]> frameConsumer;
     private final Consumer<String> errorConsumer;
+    private final Consumer<Float> levelConsumer;
     private final AtomicBoolean running = new AtomicBoolean(true);
     private volatile TargetDataLine line;
     private Thread worker;
 
-    public MicrophoneCapture(Consumer<byte[]> frameConsumer, Consumer<String> errorConsumer) {
+    public MicrophoneCapture(
+            Consumer<byte[]> frameConsumer,
+            Consumer<String> errorConsumer,
+            Consumer<Float> levelConsumer
+    ) {
         this.frameConsumer = frameConsumer;
         this.errorConsumer = errorConsumer;
+        this.levelConsumer = levelConsumer;
     }
 
     public void start() {
@@ -75,11 +82,18 @@ public final class MicrophoneCapture implements AutoCloseable {
                     break;
                 }
 
+                double squareSum = 0.0;
                 for (int i = 0; i < FRAME_SAMPLES; i++) {
                     int low = rawFrame[i * 2] & 0xff;
                     int high = rawFrame[i * 2 + 1];
-                    pcm[i] = (short) ((high << 8) | low);
+                    short sample = (short) ((high << 8) | low);
+                    pcm[i] = sample;
+                    squareSum += (double) sample * sample;
                 }
+
+                float rms = (float) Math.sqrt(squareSum / FRAME_SAMPLES) / 32768.0f;
+                float meterLevel = Math.min(1.0f, rms * 4.0f);
+                levelConsumer.accept(meterLevel);
 
                 int length = encoder.encode(
                         pcm, 0, FRAME_SAMPLES, encoded, 0, encoded.length
@@ -96,6 +110,7 @@ public final class MicrophoneCapture implements AutoCloseable {
             reportFailure("Microphone capture stopped", exception);
         } finally {
             line = null;
+            levelConsumer.accept(0.0f);
             if (openedLine != null) {
                 try {
                     openedLine.stop();
