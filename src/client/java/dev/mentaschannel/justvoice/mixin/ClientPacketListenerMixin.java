@@ -11,10 +11,17 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /**
  * /title actionbar uses a dedicated packet and bypasses Fabric's ordinary
  * ClientReceiveMessageEvents. Intercept it before vanilla renders the text.
+ *
+ * Minecraft 26.1+ is unobfuscated, so the target is used as-is.
  */
-@Mixin(ClientPacketListener.class)
+@Mixin(value = ClientPacketListener.class, remap = false)
 public abstract class ClientPacketListenerMixin {
-    @Inject(method = "setActionBarText", at = @At("HEAD"), cancellable = true)
+    @Inject(
+            method = "setActionBarText",
+            at = @At("HEAD"),
+            cancellable = true,
+            remap = false
+    )
     private void justvoice$consumeVoiceDirective(
             ClientboundSetActionBarTextPacket packet,
             CallbackInfo callbackInfo
