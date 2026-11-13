@@ -59,6 +59,7 @@ Audio uses 48 kHz, mono, 20 ms Opus frames. The client has no native Opus depend
 ## Transport
 
 - QUIC with TLS certificate and hostname validation, ALPN `just-voice/1`, and QUIC DATAGRAM frames.
+- Idle sessions send QUIC PING keep-alives at half the peer's negotiated idle timeout; no dummy voice/audio packets are generated.
 - The client sends compressed Opus frames; the server relays them unchanged to peers in the same world room.
 - The client does not send Minecraft UUIDs, player names, backend URLs, or world API keys to the voice server.
 - The QUIC client uses Kwik, a pure-Java QUIC implementation, so no platform-specific QUIC binaries need to be installed.
