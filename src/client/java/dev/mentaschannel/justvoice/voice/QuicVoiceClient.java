@@ -109,8 +109,12 @@ public final class QuicVoiceClient implements AutoCloseable {
             throw new IllegalStateException("Voice server does not support QUIC DATAGRAM");
         }
 
-        // QUIC PING frames keep an otherwise silent voice session alive.
-        candidate.keepAlive(20);
+        // Kwik's keepAlive(int) argument is the lifetime of its keep-alive
+        // actor, not the PING interval. A value of 20 seconds can be shorter
+        // than half the peer's negotiated idle timeout, causing the actor to
+        // schedule no PING at all. Keep it active for the practical lifetime
+        // of this voice session; Kwik sends PINGs at half the peer idle timeout.
+        candidate.keepAlive(Integer.MAX_VALUE);
 
         byte[] token = credentials.accessToken().getBytes(StandardCharsets.US_ASCII);
         byte[] join = new byte[1 + token.length];
