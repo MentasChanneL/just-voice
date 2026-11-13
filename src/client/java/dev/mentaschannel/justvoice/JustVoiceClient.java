@@ -28,6 +28,8 @@ public final class JustVoiceClient implements ClientModInitializer {
     private static final long TRANSIENT_HUD_REFRESH_NANOS = 2_500_000_000L;
     private static final long PERSISTENT_HUD_REFRESH_NANOS = 750_000_000L;
 
+    private static volatile VoiceSessionManager activeSessionManager;
+
     private VoiceSessionManager sessionManager;
     private KeyMapping pushToTalk;
     private VoiceSessionManager.HudStatus lastHudStatus;
@@ -37,6 +39,7 @@ public final class JustVoiceClient implements ClientModInitializer {
     public void onInitializeClient() {
         VoiceClientConfig config = VoiceClientConfig.load(FabricLoader.getInstance().getConfigDir());
         sessionManager = new VoiceSessionManager(config);
+        activeSessionManager = sessionManager;
 
         KeyMapping.Category category = KeyMapping.Category.register(
                 Identifier.fromNamespaceAndPath(MOD_ID, "voice")
@@ -53,31 +56,17 @@ public final class JustVoiceClient implements ClientModInitializer {
         }
 
         ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
-            String content = message.getString();
-            if (!VoiceDirective.hasMarker(content)) {
+            if (!VoiceDirective.hasMarker(message.getString())) {
                 return true;
             }
 
-            // Never let a credential-bearing directive appear in chat. Only action-bar
-            // messages are accepted as commands; a chat-delivered marker is discarded.
+            // Overlay system-chat messages are supported as a fallback. The regular
+            // /title actionbar packet is handled by ClientPacketListenerMixin below.
             if (!overlay) {
                 LOGGER.warn("Ignored Just Voice directive delivered outside the action bar.");
                 return false;
             }
-
-            VoiceDirective directive = VoiceDirective.parse(content);
-            if (directive == null) {
-                LOGGER.warn("Ignored malformed Just Voice action-bar directive.");
-                return false;
-            }
-
-            switch (directive.type()) {
-                case INVITE -> sessionManager.invite(directive.token());
-                case CLOSE -> sessionManager.close();
-            }
-
-            // Suppress the source action-bar message before vanilla renders it.
-            return false;
+            return !consumeActionBarDirective(message);
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -93,6 +82,34 @@ public final class JustVoiceClient implements ClientModInitializer {
         });
 
         LOGGER.info("Just Voice client initialized. Push-to-talk: V (rebindable in Controls).");
+    }
+
+    /**
+     * Consumes a padded server action-bar directive. Returns true when the
+     * message must be canceled, including malformed or pre-initialization cases.
+     */
+    public static boolean consumeActionBarDirective(Component message) {
+        if (!VoiceDirective.hasMarker(message.getString())) {
+            return false;
+        }
+
+        VoiceSessionManager manager = activeSessionManager;
+        if (manager == null) {
+            LOGGER.warn("Discarded Just Voice directive before client initialization.");
+            return true;
+        }
+
+        VoiceDirective directive = VoiceDirective.parse(message.getString());
+        if (directive == null) {
+            LOGGER.warn("Ignored malformed Just Voice action-bar directive.");
+            return true;
+        }
+
+        switch (directive.type()) {
+            case INVITE -> manager.invite(directive.token());
+            case CLOSE -> manager.close();
+        }
+        return true;
     }
 
     private void updateHud(Minecraft client) {
