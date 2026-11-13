@@ -21,7 +21,7 @@ Leading spaces may be added before `@VOICE`; the client strips any amount of lea
 
 ## World directives
 
-The client uses Fabric's server/game-message receive event and requires its action-bar flag to be set. Player-authored chat messages are never accepted as voice directives:
+A client mixin intercepts Minecraft's dedicated `ClientboundSetActionBarTextPacket` before vanilla renders it. The Fabric server/game-message receive event is also used for overlay-flagged system messages. Player-authored chat messages are never accepted as voice directives:
 
 - `@VOICE INVITE <token>` — replace the local voice session and authenticate directly to the QUIC voice server.
 - `@VOICE CLOSE` — stop local audio and close the voice connection.
