@@ -18,6 +18,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.LongConsumer;
 
 /**
  * Decodes each remote speaker with an independent Opus decoder and mixes their
@@ -35,10 +36,15 @@ public final class AudioPlayback implements AutoCloseable {
 
     private final ArrayBlockingQueue<IncomingVoiceFrame> packets =
             new ArrayBlockingQueue<>(QUEUE_CAPACITY);
+    private final LongConsumer speakerActivityConsumer;
     private final ConcurrentLinkedQueue<Long> removedPeers = new ConcurrentLinkedQueue<>();
     private final AtomicBoolean running = new AtomicBoolean(true);
     private volatile SourceDataLine outputLine;
     private Thread worker;
+
+    public AudioPlayback(LongConsumer speakerActivityConsumer) {
+        this.speakerActivityConsumer = speakerActivityConsumer;
+    }
 
     public void start() {
         worker = Thread.ofVirtual().name("just-voice-playback").start(this::playbackLoop);
@@ -168,6 +174,15 @@ public final class AudioPlayback implements AutoCloseable {
             while (state.frames.size() >= MAX_PEER_FRAME_BACKLOG) {
                 state.frames.removeFirst();
             }
+            double squareSum = 0.0;
+            for (int i = 0; i < samples; i++) {
+                squareSum += (double) pcm[i] * pcm[i];
+            }
+            double rms = Math.sqrt(squareSum / samples);
+            if (rms >= 350.0) {
+                speakerActivityConsumer.accept(frame.peerId());
+            }
+
             state.frames.addLast(new DecodedFrame(pcm, samples));
             state.lastSequence = frame.sequence();
             state.hasSequence = true;
