@@ -3,13 +3,13 @@ package dev.mentaschannel.justvoice.voice;
 import java.util.regex.Pattern;
 
 /**
- * Parses directives only after Fabric has identified a server/game system message.
+ * Parses directives from server action-bar messages. Leading padding is ignored.
  *
  * INVITE carries the opaque Just Voice session token:
- *     @VOICE INVITE <token>
+ *     [arbitrary leading whitespace]@VOICE INVITE <token>
  *
  * CLOSE clears the local voice session:
- *     @VOICE CLOSE
+ *     [arbitrary leading whitespace]@VOICE CLOSE
  */
 public record VoiceDirective(Type type, String token) {
     private static final Pattern TOKEN_PATTERN = Pattern.compile("[A-Za-z0-9_-]{32,128}");
