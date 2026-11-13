@@ -1,8 +1,8 @@
 package dev.mentaschannel.justvoice.voice;
 
-import org.concentus.OpusApplication;
-import org.concentus.OpusEncoder;
-import org.concentus.OpusException;
+import io.github.jaredmdobson.concentus.OpusApplication;
+import io.github.jaredmdobson.concentus.OpusEncoder;
+import io.github.jaredmdobson.concentus.OpusException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
