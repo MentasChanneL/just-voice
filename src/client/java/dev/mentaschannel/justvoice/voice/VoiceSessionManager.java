@@ -33,7 +33,7 @@ public final class VoiceSessionManager {
     public record HudStatus(String message, HudTone tone, boolean persistent) {
     }
 
-    public record SpeakerHudEntry(String name, int color, boolean self, float inputLevel) {
+    public record SpeakerHudEntry(long peerId, String name, int color, boolean self, float inputLevel, long lastActiveAtNanos) {
     }
 
     private final VoiceClientConfig config;
@@ -257,33 +257,21 @@ public final class VoiceSessionManager {
                 return;
             }
             result.add(new SpeakerHudEntry(
+                    peerId,
                     profile.name(),
                     profile.argbColor(),
                     peerId == selfId,
-                    peerId == selfId ? microphoneLevel : 0.0f
+                    peerId == selfId ? microphoneLevel : 0.0f,
+                    lastActive
             ));
         });
 
         result.sort(Comparator.comparing(SpeakerHudEntry::self).reversed()
-                .thenComparing(Comparator.comparingLong(
-                        (SpeakerHudEntry entry) -> lastVoiceAtNanos.getOrDefault(
-                                profileIdFor(entry), 0L
-                        )
-                ).reversed()));
+                .thenComparing(Comparator.comparingLong(SpeakerHudEntry::lastActiveAtNanos).reversed()));
         if (result.size() > MAX_VISIBLE_SPEAKERS) {
             return List.copyOf(result.subList(0, MAX_VISIBLE_SPEAKERS));
         }
         return List.copyOf(result);
-    }
-
-    private long profileIdFor(SpeakerHudEntry entry) {
-        for (var item : peerProfiles.entrySet()) {
-            if (item.getValue().name().equals(entry.name())
-                    && item.getValue().argbColor() == entry.color()) {
-                return item.getKey();
-            }
-        }
-        return Long.MIN_VALUE;
     }
 
     public float getMicrophoneLevel() {
