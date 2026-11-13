@@ -10,21 +10,32 @@ import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.DataLine;
 import javax.sound.sampled.LineUnavailableException;
 import javax.sound.sampled.SourceDataLine;
+import java.util.ArrayDeque;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Decodes incoming Opus datagrams and plays them through Java Sound.
- * A bounded queue prevents latency from growing without limit under load.
+ * Decodes each remote speaker with an independent Opus decoder and mixes their
+ * PCM frames into one output stream. Network callbacks only enqueue datagrams;
+ * all decoder state is owned by the playback worker.
  */
 public final class AudioPlayback implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger("justvoice");
     private static final int SAMPLE_RATE = 48_000;
+    private static final int MIX_FRAME_SAMPLES = 960;
     private static final int MAX_FRAME_SAMPLES = 5_760;
-    private static final int QUEUE_CAPACITY = 50;
+    private static final int QUEUE_CAPACITY = 160;
+    private static final int MAX_PEER_FRAME_BACKLOG = 4;
+    private static final long PEER_DECODER_IDLE_NANOS = TimeUnit.SECONDS.toNanos(3);
 
-    private final ArrayBlockingQueue<byte[]> packets = new ArrayBlockingQueue<>(QUEUE_CAPACITY);
+    private final ArrayBlockingQueue<IncomingVoiceFrame> packets =
+            new ArrayBlockingQueue<>(QUEUE_CAPACITY);
+    private final ConcurrentLinkedQueue<Long> removedPeers = new ConcurrentLinkedQueue<>();
     private final AtomicBoolean running = new AtomicBoolean(true);
     private volatile SourceDataLine outputLine;
     private Thread worker;
@@ -33,19 +44,28 @@ public final class AudioPlayback implements AutoCloseable {
         worker = Thread.ofVirtual().name("just-voice-playback").start(this::playbackLoop);
     }
 
-    public void enqueue(byte[] opusPacket) {
-        if (!running.get() || opusPacket == null || opusPacket.length == 0) {
+    public void enqueue(IncomingVoiceFrame frame) {
+        if (!running.get() || frame == null || frame.opusPayload().length == 0) {
             return;
         }
-        if (!packets.offer(opusPacket)) {
+        if (!packets.offer(frame)) {
             packets.poll();
-            packets.offer(opusPacket);
+            packets.offer(frame);
         }
+    }
+
+    public void removePeer(long peerId) {
+        removedPeers.offer(peerId);
     }
 
     private void playbackLoop() {
         AudioFormat format = new AudioFormat(SAMPLE_RATE, 16, 1, true, false);
         SourceDataLine output = null;
+        Map<Long, PeerDecoder> decoders = new HashMap<>();
+        int[] mixed = new int[MIX_FRAME_SAMPLES];
+        short[] outputPcm = new short[MIX_FRAME_SAMPLES];
+        byte[] outputBytes = new byte[MIX_FRAME_SAMPLES * 2];
+
         try {
             DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
             output = (SourceDataLine) AudioSystem.getLine(info);
@@ -53,30 +73,54 @@ public final class AudioPlayback implements AutoCloseable {
             outputLine = output;
             output.start();
 
-            OpusDecoder decoder = new OpusDecoder(SAMPLE_RATE, 1);
-            short[] pcm = new short[MAX_FRAME_SAMPLES];
-            byte[] pcmBytes = new byte[MAX_FRAME_SAMPLES * 2];
-
             while (running.get()) {
-                byte[] packet = packets.poll(200, TimeUnit.MILLISECONDS);
-                if (packet == null) {
-                    continue;
+                IncomingVoiceFrame first = packets.poll(20, TimeUnit.MILLISECONDS);
+                if (first != null) {
+                    decode(first, decoders);
                 }
 
-                try {
-                    int samples = decoder.decode(
-                            packet, 0, packet.length, pcm, 0, MAX_FRAME_SAMPLES, false
-                    );
-                    for (int i = 0; i < samples; i++) {
-                        pcmBytes[i * 2] = (byte) pcm[i];
-                        pcmBytes[i * 2 + 1] = (byte) (pcm[i] >>> 8);
+                IncomingVoiceFrame next;
+                while ((next = packets.poll()) != null) {
+                    decode(next, decoders);
+                }
+
+                Long removedPeer;
+                while ((removedPeer = removedPeers.poll()) != null) {
+                    decoders.remove(removedPeer);
+                }
+
+                java.util.Arrays.fill(mixed, 0);
+                boolean hasAudio = false;
+                long now = System.nanoTime();
+                Iterator<Map.Entry<Long, PeerDecoder>> iterator = decoders.entrySet().iterator();
+                while (iterator.hasNext()) {
+                    PeerDecoder state = iterator.next().getValue();
+                    DecodedFrame decoded = state.frames.pollFirst();
+                    if (decoded != null) {
+                        hasAudio = true;
+                        int count = Math.min(MIX_FRAME_SAMPLES, decoded.samples());
+                        for (int i = 0; i < count; i++) {
+                            mixed[i] += decoded.pcm()[i];
+                        }
                     }
-                    output.write(pcmBytes, 0, samples * 2);
-                } catch (OpusException | IllegalArgumentException exception) {
-                    LOGGER.debug("Discarded invalid Opus frame: {}", exception.getMessage());
+
+                    if (state.frames.isEmpty()
+                            && now - state.lastPacketAtNanos > PEER_DECODER_IDLE_NANOS) {
+                        iterator.remove();
+                    }
+                }
+
+                if (hasAudio) {
+                    for (int i = 0; i < MIX_FRAME_SAMPLES; i++) {
+                        int sample = Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, mixed[i]));
+                        outputPcm[i] = (short) sample;
+                        outputBytes[i * 2] = (byte) outputPcm[i];
+                        outputBytes[i * 2 + 1] = (byte) (outputPcm[i] >>> 8);
+                    }
+                    output.write(outputBytes, 0, outputBytes.length);
                 }
             }
-        } catch (LineUnavailableException | OpusException exception) {
+        } catch (LineUnavailableException exception) {
             if (running.get()) {
                 LOGGER.warn("Could not initialize voice playback: {}", exception.getMessage());
             }
@@ -95,10 +139,64 @@ public final class AudioPlayback implements AutoCloseable {
         }
     }
 
+    private void decode(IncomingVoiceFrame frame, Map<Long, PeerDecoder> decoders) {
+        PeerDecoder state = decoders.get(frame.peerId());
+        if (state == null) {
+            try {
+                state = new PeerDecoder(new OpusDecoder(SAMPLE_RATE, 1));
+                decoders.put(frame.peerId(), state);
+            } catch (OpusException exception) {
+                LOGGER.warn("Could not create Opus decoder for a voice peer: {}", exception.getMessage());
+                return;
+            }
+        }
+
+        if (state.hasSequence && frame.sequence() - state.lastSequence <= 0) {
+            return;
+        }
+
+        byte[] opus = frame.opusPayload();
+        short[] pcm = new short[MAX_FRAME_SAMPLES];
+        try {
+            int samples = state.decoder.decode(
+                    opus, 0, opus.length, pcm, 0, MAX_FRAME_SAMPLES, false
+            );
+            if (samples <= 0) {
+                return;
+            }
+
+            while (state.frames.size() >= MAX_PEER_FRAME_BACKLOG) {
+                state.frames.removeFirst();
+            }
+            state.frames.addLast(new DecodedFrame(pcm, samples));
+            state.lastSequence = frame.sequence();
+            state.hasSequence = true;
+            state.lastPacketAtNanos = System.nanoTime();
+        } catch (OpusException | IllegalArgumentException exception) {
+            LOGGER.debug("Discarded invalid Opus frame: {}", exception.getMessage());
+        }
+    }
+
+    private static final class PeerDecoder {
+        private final OpusDecoder decoder;
+        private final ArrayDeque<DecodedFrame> frames = new ArrayDeque<>();
+        private int lastSequence;
+        private boolean hasSequence;
+        private long lastPacketAtNanos = System.nanoTime();
+
+        private PeerDecoder(OpusDecoder decoder) {
+            this.decoder = decoder;
+        }
+    }
+
+    private record DecodedFrame(short[] pcm, int samples) {
+    }
+
     @Override
     public void close() {
         running.set(false);
         packets.clear();
+        removedPeers.clear();
         SourceDataLine current = outputLine;
         if (current != null) {
             try {
