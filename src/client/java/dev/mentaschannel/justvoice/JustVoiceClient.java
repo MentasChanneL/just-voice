@@ -40,6 +40,7 @@ public final class JustVoiceClient implements ClientModInitializer {
         VoiceClientConfig config = VoiceClientConfig.load(FabricLoader.getInstance().getConfigDir());
         sessionManager = new VoiceSessionManager(config);
         activeSessionManager = sessionManager;
+        SpeakerHudRenderer.register();
 
         KeyMapping.Category category = KeyMapping.Category.register(
                 Identifier.fromNamespaceAndPath(MOD_ID, "voice")
@@ -71,6 +72,7 @@ public final class JustVoiceClient implements ClientModInitializer {
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             sessionManager.setPushToTalk(pushToTalk.isDown());
+            sessionManager.tick();
             updateHud(client);
         });
 
@@ -82,6 +84,10 @@ public final class JustVoiceClient implements ClientModInitializer {
         });
 
         LOGGER.info("Just Voice client initialized. Push-to-talk: V (rebindable in Controls).");
+    }
+
+    public static VoiceSessionManager getActiveSessionManager() {
+        return activeSessionManager;
     }
 
     /**
