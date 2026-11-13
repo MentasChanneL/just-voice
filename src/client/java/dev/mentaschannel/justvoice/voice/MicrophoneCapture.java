@@ -25,12 +25,14 @@ public final class MicrophoneCapture implements AutoCloseable {
     private static final int FRAME_BYTES = FRAME_SAMPLES * 2;
 
     private final Consumer<byte[]> frameConsumer;
+    private final Consumer<String> errorConsumer;
     private final AtomicBoolean running = new AtomicBoolean(true);
     private volatile TargetDataLine line;
     private Thread worker;
 
-    public MicrophoneCapture(Consumer<byte[]> frameConsumer) {
+    public MicrophoneCapture(Consumer<byte[]> frameConsumer, Consumer<String> errorConsumer) {
         this.frameConsumer = frameConsumer;
+        this.errorConsumer = errorConsumer;
     }
 
     public void start() {
@@ -89,13 +91,9 @@ public final class MicrophoneCapture implements AutoCloseable {
                 }
             }
         } catch (LineUnavailableException | IllegalArgumentException | OpusException exception) {
-            if (running.get()) {
-                LOGGER.warn("Could not capture or encode microphone audio: {}", exception.getMessage());
-            }
+            reportFailure("Microphone device unavailable", exception);
         } catch (RuntimeException exception) {
-            if (running.get()) {
-                LOGGER.warn("Microphone capture stopped: {}", exception.getMessage());
-            }
+            reportFailure("Microphone capture stopped", exception);
         } finally {
             line = null;
             if (openedLine != null) {
@@ -106,6 +104,18 @@ public final class MicrophoneCapture implements AutoCloseable {
                     // The UI thread may have closed the line to unblock read().
                 }
             }
+        }
+    }
+
+    private void reportFailure(String reason, Exception exception) {
+        if (!running.get()) {
+            return;
+        }
+        LOGGER.warn("{}: {}", reason, exception.getMessage());
+        try {
+            errorConsumer.accept(reason);
+        } catch (RuntimeException callbackException) {
+            LOGGER.debug("Could not report microphone failure to the session manager.");
         }
     }
 
