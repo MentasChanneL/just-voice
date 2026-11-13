@@ -5,7 +5,7 @@ import dev.mentaschannel.justvoice.voice.VoiceSessionManager;
 import net.fabricmc.fabric.api.client.rendering.v1.LivingEntityRenderLayerRegistrationCallback;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.model.PlayerModel;
+import net.minecraft.client.model.player.PlayerModel;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.RenderLayerParent;
 import net.minecraft.client.renderer.entity.layers.RenderLayer;
@@ -74,7 +74,7 @@ public final class VoiceOverheadRenderLayer extends RenderLayer<AvatarRenderStat
 
         poseStack.pushPose();
         poseStack.translate(0.0, state.boundingBoxHeight + 0.18, 0.0);
-        poseStack.mulPose(client.gameRenderer.mainCamera().rotation());
+        poseStack.rotate(client.gameRenderer.mainCamera().rotation());
         poseStack.scale(-0.025f, -0.025f, 0.025f);
 
         submitNodeCollector.submitTextBackground(
