@@ -35,8 +35,9 @@ dependencies {
     include(implementation("at.favre.lib:hkdf:2.0.0"))
     include(implementation("com.io7m.repackage.io.whitfin:io.whitfin.siphash:2.0.1"))
 
-    // Portable Java Opus implementation.
-    include(implementation("io.github.jaredmdobson:concentus:1.0.2"))
+    // Opus is used exclusively by the client source set; expose it on that
+    // compile classpath and nest it in the distributed mod jar.
+    include(clientImplementation("io.github.jaredmdobson:concentus:1.0.2"))
 
     testImplementation "org.junit.jupiter:junit-jupiter:5.12.2"
     testRuntimeOnly "org.junit.platform:junit-platform-launcher:1.12.2"
