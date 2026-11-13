@@ -6,13 +6,22 @@ The mod connects directly to a standalone **Just Voice Server** over QUIC. The M
 
 ## Player-facing behaviour
 
-The mod listens only to server/game system messages, not player-authored chat:
+The mod accepts voice directives only from server-sent **action-bar messages** (not player-authored chat):
 
 - `@VOICE INVITE <token>` — replace the current voice session and connect to the configured voice server.
 - `@VOICE CLOSE` — immediately stop capture/playback and close the voice connection.
-- On Minecraft server disconnect, local voice credentials are cleared automatically.
 
-Recognized control messages are hidden from chat so live access tokens do not remain in chat history. The access token is kept in memory only and is never logged or written to disk.
+The server may prepend any number of ordinary spaces before `@VOICE`. The client strips leading whitespace before parsing, so the padding length is not fixed. A recognized directive is canceled before Minecraft displays it. A marker delivered as a normal chat message is discarded but never executed.
+
+Example server command:
+
+```mcfunction
+/title PlayerName actionbar {"text":"                         @VOICE INVITE <token>"}
+```
+
+Use enough leading spaces for the visible text to sit outside the player's action-bar area on the target UI scale. The mod does not depend on an exact count.
+
+**Security note:** moving a token off-screen is only visual concealment, not encryption or access control. The token is still present in the packet delivered to that client and can be inspected by a modified client or packet/debug tooling. Keep tokens short-lived, player-specific, one-use where practical, and revoke them on disconnect or room teardown. The mod never prints or stores the token in logs or files.
 
 ## Configuration
 
@@ -27,20 +36,22 @@ ca-cert-file=
 - `voice-host` and `voice-port` are the public QUIC endpoint.
 - `ca-cert-file` is optional. Leave it empty when the server certificate chains to a normal trusted CA. For a private/self-signed development certificate, set it to the PEM certificate file that should be trusted by the client.
 
-For a local development server using the certificate created in the backend setup, for example:
+For a local development server using the certificate created in the backend setup:
 
 ```properties
-voice-host=127.0.0.1
+voice-host=localhost
 voice-port=24454
 ca-cert-file=/home/your-user/.config/just-voice-dev/dev-cert.pem
 ```
 
 Never put the world API key in this file or in the client mod.
 
-## Voice controls
+## Voice controls and indicators
 
 - Hold **V** to talk (rebindable under Options → Controls).
 - The microphone is opened only while push-to-talk is held and a voice session is connected.
+- The action bar briefly reports connection success, disconnection, or connection/microphone errors.
+- While V is held, the action bar shows `MIC ON`; it changes to `MIC ON · TRANSMITTING` after voice datagrams are successfully queued for QUIC. The indicator disappears when push-to-talk is released.
 - Incoming voice is decoded and played through the system's default audio output.
 
 Audio uses 48 kHz, mono, 20 ms Opus frames. The client has no native Opus dependency and does not require a separate voice-chat application.
@@ -62,4 +73,4 @@ gradle --no-daemon build
 
 ## Current limitations
 
-The transport and audio path are implemented, but the client still needs an end-to-end test against the local Just Voice Server on the target operating system and audio devices. Kwik's project documents its TLS implementation as not independently security-audited; this mod keeps certificate-chain and hostname validation enabled and does not provide an insecure bypass. Review that trade-off before treating the client as a production security component.
+The transport and audio path still needs an end-to-end test on the target operating system and audio devices. Kwik's project documents its TLS implementation as not independently security-audited; this mod keeps certificate-chain and hostname validation enabled and does not provide an insecure bypass. Review that trade-off before treating the client as a production security component.
