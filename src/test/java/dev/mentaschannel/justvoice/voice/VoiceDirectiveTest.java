@@ -34,6 +34,17 @@ final class VoiceDirectiveTest {
     }
 
     @Test
+    void parsesActionBarDirectiveAfterArbitraryLeadingPadding() {
+        String paddedInvite = " ".repeat(512) + "\\t  @VOICE INVITE " + VALID_TOKEN;
+        VoiceDirective directive = VoiceDirective.parse(paddedInvite);
+
+        assertNotNull(directive);
+        assertEquals(VoiceDirective.Type.INVITE, directive.type());
+        assertEquals(VALID_TOKEN, directive.token());
+        assertTrue(VoiceDirective.hasMarker(paddedInvite));
+    }
+
+    @Test
     void rejectsInviteWithoutToken() {
         assertNull(VoiceDirective.parse("@VOICE INVITE"));
     }
