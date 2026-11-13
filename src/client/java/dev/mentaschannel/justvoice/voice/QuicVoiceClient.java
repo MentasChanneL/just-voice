@@ -54,6 +54,7 @@ public final class QuicVoiceClient implements AutoCloseable {
     private volatile QuicClientConnection connection;
     private volatile boolean joined;
     private volatile boolean closed;
+    private volatile long lastVoicePacketSentNanos;
 
     public QuicVoiceClient(
             VoiceCredentials credentials,
@@ -205,6 +206,13 @@ public final class QuicVoiceClient implements AutoCloseable {
         putInt(packet, 5, (int) TimeUnit.NANOSECONDS.toMillis(System.nanoTime()));
         System.arraycopy(opusFrame, 0, packet, 9, opusFrame.length);
         current.sendDatagram(packet);
+        lastVoicePacketSentNanos = System.nanoTime();
+    }
+
+    public boolean isTransmittingVoice() {
+        long lastSent = lastVoicePacketSentNanos;
+        return joined && !closed && lastSent != 0
+                && System.nanoTime() - lastSent <= TimeUnit.MILLISECONDS.toNanos(750);
     }
 
     private static void putInt(byte[] target, int offset, int value) {
