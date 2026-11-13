@@ -18,7 +18,6 @@ public final class SpeakerHudRenderer {
     private static final int PANEL_BACKGROUND = 0xB010141D;
     private static final int PANEL_BORDER = 0x603A4658;
     private static final int TEXT_COLOR = 0xFFF0F2F5;
-    private static final int MUTED_TEXT = 0xFF9AA4B2;
     private static final int METER_BACKGROUND = 0xFF333B47;
     private static final int METER_COLOR = 0xFF48D597;
 
