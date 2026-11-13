@@ -35,6 +35,7 @@ public final class VoiceSessionManager {
     private volatile boolean pushToTalkDown;
     private volatile HudStatus hudStatus;
     private volatile long hudStatusExpiresAtNanos;
+    private volatile boolean microphoneUnavailable;
     private long generation;
 
     public VoiceSessionManager(VoiceClientConfig config) {
@@ -44,6 +45,7 @@ public final class VoiceSessionManager {
     public synchronized void invite(String token) {
         closeResources();
         long currentGeneration = ++generation;
+        microphoneUnavailable = false;
         showStatus("Just Voice: Connecting...", HudTone.INFO);
 
         if (!config.isConfigured()) {
@@ -125,6 +127,7 @@ public final class VoiceSessionManager {
         if (expectedGeneration != generation) {
             return;
         }
+        microphoneUnavailable = true;
         LOGGER.warn("Just Voice microphone unavailable: {}", sanitizeServerMessage(message));
         stopMicrophone();
         showStatus("Just Voice: Microphone unavailable", HudTone.ERROR);
@@ -142,6 +145,9 @@ public final class VoiceSessionManager {
     }
 
     public synchronized void setPushToTalk(boolean down) {
+        if (down != pushToTalkDown) {
+            microphoneUnavailable = false;
+        }
         pushToTalkDown = down;
         updateMicrophone();
     }
@@ -152,6 +158,9 @@ public final class VoiceSessionManager {
 
         if (!shouldCapture) {
             stopMicrophone();
+            return;
+        }
+        if (microphoneUnavailable || microphone != null) {
             return;
         }
         if (microphone != null) {
@@ -182,8 +191,8 @@ public final class VoiceSessionManager {
     }
 
     private void showStatus(String message, HudTone tone) {
-        hudStatus = new HudStatus(message, tone, false);
         hudStatusExpiresAtNanos = System.nanoTime() + STATUS_DURATION_NANOS;
+        hudStatus = new HudStatus(message, tone, false);
     }
 
     private static String transportHudMessage(String message) {
@@ -209,6 +218,7 @@ public final class VoiceSessionManager {
         boolean hadSession = connection.get() != null;
         generation++;
         pushToTalkDown = false;
+        microphoneUnavailable = false;
         closeResources();
         if (hadSession) {
             showStatus("Just Voice: Disconnected", HudTone.INFO);
