@@ -356,7 +356,7 @@ public final class JustVoiceConfigScreen extends Screen {
     private void importCustomIcon(Path selectedPath) {
         try {
             MicIconManager.importCustomIcon(selectedPath, settings);
-            JustVoiceChat.info("screen.justvoice.icon_imported");
+            JustVoiceChat.successfully("screen.justvoice.icon_imported");
         } catch (Exception exception) {
             System.getLogger("justvoice").log(System.Logger.Level.WARNING,
                     "Could not import microphone icon: " + exception.getMessage());

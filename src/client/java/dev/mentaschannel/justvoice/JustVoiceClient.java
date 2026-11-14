@@ -91,13 +91,13 @@ public final class JustVoiceClient implements ClientModInitializer {
             sessionManager.tick();
         });
 
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+        ClientPlayConnectionEvents.DISCONNECT.register((_, _) -> {
             if (sessionManager != null) {
                 sessionManager.closeSilently();
             }
         });
 
-        LOGGER.info("Just Voice client initialized. Push-to-talk: V (rebindable in Controls).");
+        LOGGER.info("Just Voice client initialized");
     }
 
     private void registerClientCommands() {

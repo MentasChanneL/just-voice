@@ -1,0 +1,13 @@
+{
+    "providers": [
+        {
+            "type": "bitmap",
+            "file": "justvoice:font/mic_chat.png",
+            "ascent": 7,
+            "height": 8,
+            "chars": [
+                "0"
+            ]
+        }
+    ]
+}

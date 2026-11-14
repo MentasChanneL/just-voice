@@ -71,6 +71,7 @@ public final class VoiceSessionManager {
      * written to disk and a disabled client does not open a QUIC connection.
      */
     public synchronized void invite(String token) {
+        JustVoiceChat.info("message.justvoice.got_invite");
         pendingToken = token;
         if (!settings.isEnabled()) {
             JustVoiceChat.warn("message.justvoice.token_saved_disabled");
@@ -138,8 +139,8 @@ public final class VoiceSessionManager {
                 }
                 playback = createPlayback();
                 playback.start();
-                LOGGER.info("Just Voice session is ready. Hold V to talk.");
-                JustVoiceChat.joined("message.justvoice.connected");
+                LOGGER.info("Just Voice session is ready");
+                JustVoiceChat.successfully("message.justvoice.connected");
                 lastRosterRequestNanos = System.nanoTime();
                 updateMicrophone();
             }
@@ -178,10 +179,8 @@ public final class VoiceSessionManager {
     /** Live peer-joined event, not an item in an initial roster snapshot. */
     private void handlePeerProfile(VoicePeerProfile profile) {
         VoicePeerProfile previous = peerProfiles.put(profile.peerId(), profile);
-        QuicVoiceClient current = connection.get();
-        boolean isSelf = current != null && profile.peerId() == current.selfPeerId();
-        if (previous == null && !isSelf) {
-            JustVoiceChat.joined("message.justvoice.peer_joined", profile.name());
+        if (previous == null) {
+            JustVoiceChat.joined(profile.name());
         }
     }
 
@@ -211,18 +210,12 @@ public final class VoiceSessionManager {
         VoicePeerProfile removed = peerProfiles.remove(peerId);
         lastVoiceAtNanos.remove(peerId);
         AudioPlayback currentPlayback = playback;
-        if (currentPlayback != null) {
-            currentPlayback.removePeer(peerId);
-        }
-        if (removed != null) {
-            JustVoiceChat.left("message.justvoice.peer_left", removed.name());
-        }
+        if (currentPlayback != null) currentPlayback.removePeer(peerId);
+        if (removed != null) JustVoiceChat.left(removed.name());
     }
 
     private synchronized void handleTransportError(long expectedGeneration, String message) {
-        if (expectedGeneration != generation) {
-            return;
-        }
+        if (expectedGeneration != generation) return;
         String sanitized = sanitizeServerMessage(message);
         LOGGER.warn("Just Voice connection ended: {}", sanitized);
         stopMicrophone();
@@ -234,9 +227,7 @@ public final class VoiceSessionManager {
     }
 
     private synchronized void handleMicrophoneError(long expectedGeneration, String message) {
-        if (expectedGeneration != generation) {
-            return;
-        }
+        if (expectedGeneration != generation) return;
         microphoneUnavailable = true;
         LOGGER.warn("Just Voice microphone unavailable: {}", sanitizeServerMessage(message));
         stopMicrophone();
@@ -245,23 +236,18 @@ public final class VoiceSessionManager {
 
     private void sendMicrophoneFrame(byte[] frame) {
         QuicVoiceClient current = connection.get();
-        if (current == null) {
-            return;
-        }
+        if (current == null) return;
         current.sendVoice(frame);
-        if (current.isTransmittingVoice() && microphoneLevel >= 0.03f) {
+        if (current.isTransmittingVoice() && microphoneLevel >= 0.03f)
             lastVoiceAtNanos.put(current.selfPeerId(), System.nanoTime());
-        }
     }
 
     private void setMicrophoneLevel(Float level) {
-        microphoneLevel = level == null ? 0.0f : Math.max(0.0f, Math.min(1.0f, level));
+        microphoneLevel = level == null ? 0.0f : Math.clamp(level, 0.0f, 1.0f);
     }
 
     public synchronized void setPushToTalk(boolean down) {
-        if (down != pushToTalkDown) {
-            microphoneUnavailable = false;
-        }
+        if (down != pushToTalkDown) microphoneUnavailable = false;
         pushToTalkDown = down;
         updateMicrophone();
     }
@@ -277,9 +263,7 @@ public final class VoiceSessionManager {
             stopMicrophone();
             return;
         }
-        if (microphoneUnavailable || microphone != null) {
-            return;
-        }
+        if (microphoneUnavailable || microphone != null) return;
 
         long currentGeneration = generation;
         microphone = new MicrophoneCapture(
@@ -293,9 +277,7 @@ public final class VoiceSessionManager {
 
     public void tick() {
         QuicVoiceClient current = connection.get();
-        if (current == null || !current.isJoined()) {
-            return;
-        }
+        if (current == null || !current.isJoined()) return;
 
         long now = System.nanoTime();
         if (now - lastRosterRequestNanos >= ROSTER_REFRESH_NANOS) {
@@ -334,16 +316,13 @@ public final class VoiceSessionManager {
 
         result.sort(Comparator.comparing(SpeakerHudEntry::self).reversed()
                 .thenComparing(Comparator.comparingLong(SpeakerHudEntry::lastActiveAtNanos).reversed()));
-        if (result.size() > MAX_VISIBLE_SPEAKERS) {
+        if (result.size() > MAX_VISIBLE_SPEAKERS)
             return List.copyOf(result.subList(0, MAX_VISIBLE_SPEAKERS));
-        }
         return List.copyOf(result);
     }
 
     public Integer getActiveSpeakerColor(String minecraftName) {
-        if (minecraftName == null || minecraftName.isBlank()) {
-            return null;
-        }
+        if (minecraftName == null || minecraftName.isBlank()) return null;
 
         long now = System.nanoTime();
         long newestActivity = 0L;
@@ -385,15 +364,11 @@ public final class VoiceSessionManager {
 
     public void requestRoster() {
         QuicVoiceClient current = connection.get();
-        if (current != null && current.isJoined()) {
-            current.requestRoster();
-        }
+        if (current != null && current.isJoined()) current.requestRoster();
     }
 
     public synchronized void restartPlayback() {
-        if (!isConnected()) {
-            return;
-        }
+        if (!isConnected()) return;
         closeAudio();
         playback = createPlayback();
         playback.start();
@@ -425,9 +400,7 @@ public final class VoiceSessionManager {
      * prevents other clients from receiving duplicate participant join/leave events.
      */
     public synchronized void setEnabled(boolean enabled) {
-        if (settings.isEnabled() == enabled) {
-            return;
-        }
+        if (settings.isEnabled() == enabled) return;
 
         settings.setEnabled(enabled);
         microphoneUnavailable = false;
@@ -453,9 +426,7 @@ public final class VoiceSessionManager {
 
         // An in-flight connection is allowed to complete while the local voice
         // toggle is off. Avoid starting a duplicate JOIN for the same token.
-        if (current != null) {
-            return;
-        }
+        if (current != null) return;
 
         if (pendingToken == null) {
             JustVoiceChat.warn("message.justvoice.waiting_for_invitation");
@@ -500,19 +471,16 @@ public final class VoiceSessionManager {
         microphoneUnavailable = false;
         microphoneLevel = 0.0f;
         closeResources();
-        if (notifyPlayer && (hadSession || hadToken)) {
-            JustVoiceChat.left("message.justvoice.disconnected");
-        }
+        if (notifyPlayer && (hadSession || hadToken))
+            JustVoiceChat.info("message.justvoice.disconnected");
     }
 
     private static String transportChatKey(String message) {
         String normalized = message.toLowerCase(Locale.ROOT);
-        if (normalized.contains("invalid or expired voice token")) {
+        if (normalized.contains("invalid or expired voice token"))
             return "message.justvoice.invitation_expired";
-        }
-        if (normalized.contains("datagram")) {
+        if (normalized.contains("datagram"))
             return "message.justvoice.protocol_error";
-        }
         return "message.justvoice.connection_lost";
     }
 
@@ -522,32 +490,25 @@ public final class VoiceSessionManager {
         peerProfiles.clear();
         lastVoiceAtNanos.clear();
         QuicVoiceClient current = connection.getAndSet(null);
-        if (current != null) {
+        if (current != null)
             Thread.ofVirtual().name("just-voice-disconnect").start(current::close);
-        }
     }
 
     private void stopMicrophone() {
         MicrophoneCapture current = microphone;
         microphone = null;
         microphoneLevel = 0.0f;
-        if (current != null) {
-            current.close();
-        }
+        if (current != null) current.close();
     }
 
     private void closeAudio() {
         AudioPlayback current = playback;
         playback = null;
-        if (current != null) {
-            current.close();
-        }
+        if (current != null) current.close();
     }
 
     private static String sanitizeServerMessage(String message) {
-        if (message == null || message.isBlank()) {
-            return "request rejected";
-        }
+        if (message == null || message.isBlank()) return "request rejected";
         String sanitized = message.replaceAll("[\\p{Cntrl}&&[^\\t]]", " ").trim();
         return sanitized.length() > 160 ? sanitized.substring(0, 160) : sanitized;
     }
