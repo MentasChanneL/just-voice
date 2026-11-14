@@ -20,25 +20,21 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Client-only entrypoint. Voice directives are accepted only from server
- * action-bar messages; player-authored chat is never used for credentials.
+ * action-bar packets; player-authored chat is never used for credentials.
  */
 public final class JustVoiceClient implements ClientModInitializer {
     public static final String MOD_ID = "justvoice";
     private static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
-    private static final long TRANSIENT_HUD_REFRESH_NANOS = 2_500_000_000L;
-    private static final long PERSISTENT_HUD_REFRESH_NANOS = 750_000_000L;
 
     private static volatile VoiceSessionManager activeSessionManager;
 
     private VoiceSessionManager sessionManager;
     private KeyMapping pushToTalk;
-    private VoiceSessionManager.HudStatus lastHudStatus;
-    private long lastHudMessageAtNanos;
 
     @Override
     public void onInitializeClient() {
         VoiceClientConfig config = VoiceClientConfig.load(FabricLoader.getInstance().getConfigDir());
-        sessionManager = new VoiceSessionManager(config);
+        sessionManager = new VoiceSessionManager(config, JustVoiceClient::showChatNotice);
         activeSessionManager = sessionManager;
         SpeakerHudRenderer.register();
         VoiceOverheadRenderLayer.register();
@@ -74,14 +70,12 @@ public final class JustVoiceClient implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             sessionManager.setPushToTalk(pushToTalk.isDown());
             sessionManager.tick();
-            updateHud(client);
         });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             if (sessionManager != null) {
-                sessionManager.close();
+                sessionManager.closeSilently();
             }
-            lastHudStatus = null;
         });
 
         LOGGER.info("Just Voice client initialized. Push-to-talk: V (rebindable in Controls).");
@@ -89,6 +83,20 @@ public final class JustVoiceClient implements ClientModInitializer {
 
     public static VoiceSessionManager getActiveSessionManager() {
         return activeSessionManager;
+    }
+
+    private static void showChatNotice(VoiceSessionManager.ChatNotice notice) {
+        Minecraft client = Minecraft.getInstance();
+        client.execute(() -> {
+            if (client.player == null) {
+                return;
+            }
+
+            client.player.displayClientMessage(
+                    Component.translatable(notice.translationKey()).withStyle(notice.color()),
+                    false
+            );
+        });
     }
 
     /**
@@ -117,39 +125,5 @@ public final class JustVoiceClient implements ClientModInitializer {
             case CLOSE -> manager.close();
         }
         return true;
-    }
-
-    private void updateHud(Minecraft client) {
-        VoiceSessionManager.HudStatus status = sessionManager.getHudStatus();
-        long now = System.nanoTime();
-
-        if (status == null) {
-            if (lastHudStatus != null && lastHudStatus.persistent()) {
-                client.gui.hud.setOverlayMessage(Component.empty(), false);
-            }
-            lastHudStatus = null;
-            return;
-        }
-
-        long refreshInterval = status.persistent()
-                ? PERSISTENT_HUD_REFRESH_NANOS
-                : TRANSIENT_HUD_REFRESH_NANOS;
-        boolean changed = !status.equals(lastHudStatus);
-        boolean refresh = now - lastHudMessageAtNanos >= refreshInterval;
-
-        if (changed || refresh) {
-            ChatFormatting color = switch (status.tone()) {
-                case INFO -> ChatFormatting.GRAY;
-                case SUCCESS, ACTIVE -> ChatFormatting.GREEN;
-                case WARNING -> ChatFormatting.YELLOW;
-                case ERROR -> ChatFormatting.RED;
-            };
-            client.gui.hud.setOverlayMessage(
-                    Component.literal(status.message()).withStyle(color),
-                    false
-            );
-            lastHudStatus = status;
-            lastHudMessageAtNanos = now;
-        }
     }
 }

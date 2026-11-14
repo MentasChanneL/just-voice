@@ -25,11 +25,11 @@ Example server command:
 
 - Hold **V** to talk (rebindable under Options → Controls).
 - The microphone is opened only while push-to-talk is held and a voice session is connected.
-- The action bar briefly reports connection success, disconnection, or connection/microphone errors.
-- While V is held, a local microphone meter shows the input level measured from PCM before Opus encoding.
-- The bottom-right speaker panel shows up to five participants whose decoded audio contains audible signal. It includes the local player while their microphone is sending audible voice frames.
-- Speaker entries use the player's server-provided name and RGB presentation color.
-- A team-coloured `MIC` marker is rendered above active speakers. It is hidden above the local avatar in first person and shown in third person.
+- Connection, disconnection, and error notices are sent to Minecraft chat and localized in the mod language files; the action bar is not used for status messages.
+- A supplied microphone icon is shown beside the hotbar while connected: muted/idle when V is released, active while push-to-talk is held.
+- The bottom-right speaker panel shows up to five participants whose decoded audio contains audible signal. It includes the local player while their microphone is sending audible voice frames, with a live input meter on the local row.
+- Speaker entries use the player's server-provided name and RGB presentation color. Rows fade out smoothly after speech stops.
+- A color-matched `MIC` marker is rendered above active speakers. It is hidden above the local avatar in first person and shown in third person.
 - Incoming audio has an independent Opus decoder per peer and is mixed into one output device.
 
 Audio uses 48 kHz, mono, 20 ms Opus frames. The client has no native Opus dependency and does not require a separate voice-chat application.

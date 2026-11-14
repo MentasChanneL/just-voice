@@ -1,0 +1,14 @@
+{
+  "key.category.justvoice.voice": "Just Voice",
+  "key.justvoice.push_to_talk": "Говорить",
+  "message.justvoice.connecting": "Just Voice: Подключение…",
+  "message.justvoice.connected": "Just Voice: Голосовой чат подключён.",
+  "message.justvoice.disconnected": "Just Voice: Голосовой чат отключён.",
+  "message.justvoice.connection_failed": "Just Voice: Не удалось подключиться к голосовому серверу.",
+  "message.justvoice.connection_lost": "Just Voice: Соединение с голосовым сервером потеряно.",
+  "message.justvoice.invitation_expired": "Just Voice: Приглашение истекло. Перезайдите в мир, чтобы получить новое.",
+  "message.justvoice.protocol_error": "Just Voice: Ошибка протокола голосового сервера.",
+  "message.justvoice.server_not_configured": "Just Voice: Голосовой сервер не настроен.",
+  "message.justvoice.invalid_invitation": "Just Voice: Недействительное приглашение в голосовой чат.",
+  "message.justvoice.microphone_unavailable": "Just Voice: Не удалось запустить микрофон."
+}

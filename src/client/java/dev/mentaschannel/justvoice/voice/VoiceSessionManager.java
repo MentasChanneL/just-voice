@@ -1,5 +1,6 @@
 package dev.mentaschannel.justvoice.voice;
 
+import net.minecraft.ChatFormatting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -10,6 +11,7 @@ import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 /**
  * Owns one temporary voice session. Tokens stay in memory and are replaced
@@ -17,26 +19,35 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public final class VoiceSessionManager {
     private static final Logger LOGGER = LoggerFactory.getLogger("justvoice");
-    private static final long STATUS_DURATION_NANOS = TimeUnit.SECONDS.toNanos(4);
-    private static final long SPEAKER_VISIBLE_NANOS = TimeUnit.MILLISECONDS.toNanos(1_500);
+    private static final long SPEAKER_FADE_START_NANOS = TimeUnit.MILLISECONDS.toNanos(1_100);
+    private static final long SPEAKER_FADE_DURATION_NANOS = TimeUnit.MILLISECONDS.toNanos(400);
+    private static final long SPEAKER_VISIBLE_NANOS = SPEAKER_FADE_START_NANOS + SPEAKER_FADE_DURATION_NANOS;
     private static final long ROSTER_REFRESH_NANOS = TimeUnit.SECONDS.toNanos(5);
     private static final int MAX_VISIBLE_SPEAKERS = 5;
 
-    public enum HudTone {
-        INFO,
-        SUCCESS,
-        WARNING,
-        ERROR,
-        ACTIVE
+    public record ChatNotice(String translationKey, ChatFormatting color) {
     }
 
-    public record HudStatus(String message, HudTone tone, boolean persistent) {
-    }
-
-    public record SpeakerHudEntry(long peerId, String name, int color, boolean self, float inputLevel, long lastActiveAtNanos) {
+    public record SpeakerHudEntry(
+            long peerId,
+            String name,
+            int color,
+            boolean self,
+            float inputLevel,
+            long lastActiveAtNanos
+    ) {
+        public float opacity(long nowNanos) {
+            long age = Math.max(0L, nowNanos - lastActiveAtNanos);
+            if (age <= SPEAKER_FADE_START_NANOS) {
+                return 1.0f;
+            }
+            return Math.max(0.0f, 1.0f
+                    - (age - SPEAKER_FADE_START_NANOS) / (float) SPEAKER_FADE_DURATION_NANOS);
+        }
     }
 
     private final VoiceClientConfig config;
+    private final Consumer<ChatNotice> chatNotifier;
     private final AtomicReference<QuicVoiceClient> connection = new AtomicReference<>();
     private final ConcurrentHashMap<Long, VoicePeerProfile> peerProfiles = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Long> lastVoiceAtNanos = new ConcurrentHashMap<>();
@@ -44,15 +55,14 @@ public final class VoiceSessionManager {
     private volatile AudioPlayback playback;
     private volatile MicrophoneCapture microphone;
     private volatile boolean pushToTalkDown;
-    private volatile HudStatus hudStatus;
-    private volatile long hudStatusExpiresAtNanos;
     private volatile boolean microphoneUnavailable;
     private volatile float microphoneLevel;
     private volatile long lastRosterRequestNanos;
     private long generation;
 
-    public VoiceSessionManager(VoiceClientConfig config) {
+    public VoiceSessionManager(VoiceClientConfig config, Consumer<ChatNotice> chatNotifier) {
         this.config = config;
+        this.chatNotifier = chatNotifier;
     }
 
     public synchronized void invite(String token) {
@@ -61,11 +71,11 @@ public final class VoiceSessionManager {
         microphoneUnavailable = false;
         microphoneLevel = 0.0f;
         lastRosterRequestNanos = 0L;
-        showStatus("Just Voice: Connecting...", HudTone.INFO);
+        notifyChat("message.justvoice.connecting", ChatFormatting.GRAY);
 
         if (!config.isConfigured()) {
             LOGGER.warn("Cannot accept Just Voice invitation: voice-host is not configured.");
-            showStatus("Just Voice: Server not configured", HudTone.ERROR);
+            notifyChat("message.justvoice.server_not_configured", ChatFormatting.RED);
             return;
         }
 
@@ -79,7 +89,7 @@ public final class VoiceSessionManager {
             );
         } catch (IllegalArgumentException exception) {
             LOGGER.warn("Ignored invalid Just Voice invitation token.");
-            showStatus("Just Voice: Invalid invitation", HudTone.ERROR);
+            notifyChat("message.justvoice.invalid_invitation", ChatFormatting.RED);
             return;
         }
 
@@ -115,7 +125,7 @@ public final class VoiceSessionManager {
                 );
                 playback.start();
                 LOGGER.info("Just Voice session is ready. Hold V to talk.");
-                showStatus("Just Voice: Connected", HudTone.SUCCESS);
+                notifyChat("message.justvoice.connected", ChatFormatting.GREEN);
                 lastRosterRequestNanos = System.nanoTime();
                 updateMicrophone();
             }
@@ -126,7 +136,7 @@ public final class VoiceSessionManager {
                     peerProfiles.clear();
                     lastVoiceAtNanos.clear();
                     LOGGER.warn("Could not connect to Just Voice server: {}", exception.getMessage());
-                    showStatus("Just Voice: Connection failed", HudTone.ERROR);
+                    notifyChat("message.justvoice.connection_failed", ChatFormatting.RED);
                 }
             }
             candidate.close();
@@ -164,7 +174,7 @@ public final class VoiceSessionManager {
         connection.set(null);
         peerProfiles.clear();
         lastVoiceAtNanos.clear();
-        showStatus(transportHudMessage(sanitized), HudTone.ERROR);
+        notifyChat(transportChatKey(sanitized), ChatFormatting.RED);
     }
 
     private synchronized void handleMicrophoneError(long expectedGeneration, String message) {
@@ -174,7 +184,7 @@ public final class VoiceSessionManager {
         microphoneUnavailable = true;
         LOGGER.warn("Just Voice microphone unavailable: {}", sanitizeServerMessage(message));
         stopMicrophone();
-        showStatus("Just Voice: Microphone unavailable", HudTone.ERROR);
+        notifyChat("message.justvoice.microphone_unavailable", ChatFormatting.RED);
     }
 
     private void sendMicrophoneFrame(byte[] frame) {
@@ -310,56 +320,48 @@ public final class VoiceSessionManager {
         return pushToTalkDown;
     }
 
-    public HudStatus getHudStatus() {
+    public boolean isConnected() {
         QuicVoiceClient current = connection.get();
-        if (pushToTalkDown && microphone != null && current != null && current.isJoined()) {
-            if (current.isTransmittingVoice()) {
-                return new HudStatus("Just Voice: MIC ON · TRANSMITTING", HudTone.ACTIVE, true);
-            }
-            return new HudStatus("Just Voice: MIC ON", HudTone.WARNING, true);
-        }
-
-        HudStatus currentStatus = hudStatus;
-        return currentStatus != null && System.nanoTime() < hudStatusExpiresAtNanos
-                ? currentStatus
-                : null;
+        return current != null && current.isJoined();
     }
 
-    private void showStatus(String message, HudTone tone) {
-        hudStatusExpiresAtNanos = System.nanoTime() + STATUS_DURATION_NANOS;
-        hudStatus = new HudStatus(message, tone, false);
-    }
-
-    private static String transportHudMessage(String message) {
-        String normalized = message.toLowerCase(Locale.ROOT);
-        if (normalized.contains("invalid or expired voice token")) {
-            return "Just Voice: Invitation expired";
-        }
-        if (normalized.contains("datagram")) {
-            return "Just Voice: Server protocol error";
-        }
-        return "Just Voice: Connection lost";
-    }
-
-    private void stopMicrophone() {
-        MicrophoneCapture current = microphone;
-        microphone = null;
-        microphoneLevel = 0.0f;
-        if (current != null) {
-            current.close();
-        }
+    public boolean isMicrophoneActive() {
+        return pushToTalkDown && microphone != null && isConnected();
     }
 
     public synchronized void close() {
+        close(true);
+    }
+
+    public synchronized void closeSilently() {
+        close(false);
+    }
+
+    private void close(boolean notifyPlayer) {
         boolean hadSession = connection.get() != null;
         generation++;
         pushToTalkDown = false;
         microphoneUnavailable = false;
         microphoneLevel = 0.0f;
         closeResources();
-        if (hadSession) {
-            showStatus("Just Voice: Disconnected", HudTone.INFO);
+        if (notifyPlayer && hadSession) {
+            notifyChat("message.justvoice.disconnected", ChatFormatting.GRAY);
         }
+    }
+
+    private void notifyChat(String translationKey, ChatFormatting color) {
+        chatNotifier.accept(new ChatNotice(translationKey, color));
+    }
+
+    private static String transportChatKey(String message) {
+        String normalized = message.toLowerCase(Locale.ROOT);
+        if (normalized.contains("invalid or expired voice token")) {
+            return "message.justvoice.invitation_expired";
+        }
+        if (normalized.contains("datagram")) {
+            return "message.justvoice.protocol_error";
+        }
+        return "message.justvoice.connection_lost";
     }
 
     private void closeResources() {
@@ -370,6 +372,15 @@ public final class VoiceSessionManager {
         QuicVoiceClient current = connection.getAndSet(null);
         if (current != null) {
             Thread.ofVirtual().name("just-voice-disconnect").start(current::close);
+        }
+    }
+
+    private void stopMicrophone() {
+        MicrophoneCapture current = microphone;
+        microphone = null;
+        microphoneLevel = 0.0f;
+        if (current != null) {
+            current.close();
         }
     }
 

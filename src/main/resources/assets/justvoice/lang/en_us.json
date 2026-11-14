@@ -1,4 +1,14 @@
 {
   "key.category.justvoice.voice": "Just Voice",
-  "key.justvoice.push_to_talk": "Push to Talk"
+  "key.justvoice.push_to_talk": "Push to Talk",
+  "message.justvoice.connecting": "Just Voice: Connecting…",
+  "message.justvoice.connected": "Just Voice: Connected to voice chat.",
+  "message.justvoice.disconnected": "Just Voice: Disconnected from voice chat.",
+  "message.justvoice.connection_failed": "Just Voice: Could not connect to the voice server.",
+  "message.justvoice.connection_lost": "Just Voice: Connection to the voice server was lost.",
+  "message.justvoice.invitation_expired": "Just Voice: Invitation expired. Rejoin the world for a new invitation.",
+  "message.justvoice.protocol_error": "Just Voice: Voice server protocol error.",
+  "message.justvoice.server_not_configured": "Just Voice: Voice server is not configured.",
+  "message.justvoice.invalid_invitation": "Just Voice: Invalid voice invitation.",
+  "message.justvoice.microphone_unavailable": "Just Voice: Could not start the microphone."
 }
