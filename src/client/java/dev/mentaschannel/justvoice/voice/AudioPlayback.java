@@ -2,16 +2,21 @@ package dev.mentaschannel.justvoice.voice;
 
 import io.github.jaredmdobson.concentus.OpusDecoder;
 import io.github.jaredmdobson.concentus.OpusException;
+import org.lwjgl.openal.AL;
+import org.lwjgl.openal.AL10;
+import org.lwjgl.openal.ALC;
+import org.lwjgl.openal.ALC10;
+import org.lwjgl.openal.ALC11;
+import org.lwjgl.openal.ALCCapabilities;
+import org.lwjgl.openal.ALCapabilities;
+import org.lwjgl.openal.EXTThreadLocalContext;
+import org.lwjgl.system.MemoryUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.sound.sampled.AudioFormat;
-import javax.sound.sampled.AudioSystem;
-import javax.sound.sampled.DataLine;
-import javax.sound.sampled.LineUnavailableException;
-import javax.sound.sampled.Mixer;
-import javax.sound.sampled.SourceDataLine;
+import java.nio.ShortBuffer;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -23,8 +28,8 @@ import java.util.function.LongConsumer;
 import java.util.function.LongFunction;
 
 /**
- * Decodes each remote speaker with an independent Opus decoder and mixes their
- * PCM frames into one output stream, with master volume and persistent per-player mute/volume.
+ * Decodes Opus voices, mixes PCM and plays them through an OpenAL output device.
+ * Device specifiers are the same identifiers exposed by Minecraft's sound settings.
  */
 public final class AudioPlayback implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger("justvoice");
@@ -33,6 +38,7 @@ public final class AudioPlayback implements AutoCloseable {
     private static final int MAX_FRAME_SAMPLES = 5_760;
     private static final int QUEUE_CAPACITY = 160;
     private static final int MAX_PEER_FRAME_BACKLOG = 4;
+    private static final int OUTPUT_BUFFER_COUNT = 6;
     private static final long PEER_DECODER_IDLE_NANOS = TimeUnit.SECONDS.toNanos(3);
 
     private final ArrayBlockingQueue<IncomingVoiceFrame> packets = new ArrayBlockingQueue<>(QUEUE_CAPACITY);
@@ -41,7 +47,6 @@ public final class AudioPlayback implements AutoCloseable {
     private final VoiceSettings settings;
     private final ConcurrentLinkedQueue<Long> removedPeers = new ConcurrentLinkedQueue<>();
     private final AtomicBoolean running = new AtomicBoolean(true);
-    private volatile SourceDataLine outputLine;
     private Thread worker;
 
     public AudioPlayback(
@@ -73,17 +78,45 @@ public final class AudioPlayback implements AutoCloseable {
     }
 
     private void playbackLoop() {
-        AudioFormat format = new AudioFormat(SAMPLE_RATE, 16, 1, true, false);
-        SourceDataLine output = null;
+        long device = 0L;
+        long context = 0L;
+        ALCCapabilities alcCaps = null;
+        ALCapabilities alCaps = null;
+        int source = 0;
+        int[] buffers = new int[OUTPUT_BUFFER_COUNT];
         Map<Long, PeerDecoder> decoders = new HashMap<>();
         int[] mixed = new int[MIX_FRAME_SAMPLES];
-        byte[] outputBytes = new byte[MIX_FRAME_SAMPLES * 2];
+        short[] outputSamples = new short[MIX_FRAME_SAMPLES];
+        ArrayDeque<Integer> freeBuffers = new ArrayDeque<>();
 
         try {
-            output = openOutputLine(format, settings.outputDevice());
-            output.open(format, SAMPLE_RATE / 5);
-            outputLine = output;
-            output.start();
+            String selectedDevice = settings.outputDevice();
+            device = ALC10.alcOpenDevice(selectedDevice == null || selectedDevice.isBlank()
+                    ? (CharSequence) null : selectedDevice);
+            if (device == 0L && selectedDevice != null && !selectedDevice.isBlank()) {
+                LOGGER.warn("Selected OpenAL output device is unavailable; using system default: {}", selectedDevice);
+                settings.setOutputDevice("");
+                device = ALC10.alcOpenDevice((CharSequence) null);
+            }
+            if (device == 0L) {
+                throw new IllegalStateException("Could not open an OpenAL output device");
+            }
+
+            alcCaps = ALC.createCapabilities(device);
+            if (!alcCaps.ALC_EXT_thread_local_context) {
+                throw new IllegalStateException("OpenAL implementation does not support thread-local contexts");
+            }
+
+            context = ALC10.alcCreateContext(device, (int[]) null);
+            if (context == 0L || !EXTThreadLocalContext.alcSetThreadContext(context)) {
+                throw new IllegalStateException("Could not create a thread-local OpenAL context");
+            }
+            alCaps = AL.createCapabilities(alcCaps);
+            source = AL10.alGenSources();
+            for (int i = 0; i < buffers.length; i++) {
+                buffers[i] = AL10.alGenBuffers();
+                freeBuffers.addLast(buffers[i]);
+            }
 
             while (running.get()) {
                 IncomingVoiceFrame first = packets.poll(20, TimeUnit.MILLISECONDS);
@@ -99,6 +132,11 @@ public final class AudioPlayback implements AutoCloseable {
                 Long removedPeer;
                 while ((removedPeer = removedPeers.poll()) != null) {
                     decoders.remove(removedPeer);
+                }
+
+                int processed = AL10.alGetSourcei(source, AL10.AL_BUFFERS_PROCESSED);
+                while (processed-- > 0) {
+                    freeBuffers.addLast(AL10.alSourceUnqueueBuffers(source));
                 }
 
                 java.util.Arrays.fill(mixed, 0);
@@ -129,51 +167,73 @@ public final class AudioPlayback implements AutoCloseable {
                     }
                 }
 
-                if (hasAudio) {
+                if (hasAudio && !freeBuffers.isEmpty()) {
                     for (int i = 0; i < MIX_FRAME_SAMPLES; i++) {
-                        int sample = Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, mixed[i]));
-                        outputBytes[i * 2] = (byte) sample;
-                        outputBytes[i * 2 + 1] = (byte) (sample >>> 8);
+                        outputSamples[i] = (short) Math.max(
+                                Short.MIN_VALUE,
+                                Math.min(Short.MAX_VALUE, mixed[i])
+                        );
                     }
-                    output.write(outputBytes, 0, outputBytes.length);
+
+                    int buffer = freeBuffers.removeFirst();
+                    ShortBuffer pcm = MemoryUtil.memAllocShort(outputSamples.length);
+                    try {
+                        pcm.put(outputSamples).flip();
+                        AL10.alBufferData(buffer, AL10.AL_FORMAT_MONO16, pcm, SAMPLE_RATE);
+                        AL10.alSourceQueueBuffers(source, buffer);
+                    } finally {
+                        MemoryUtil.memFree(pcm);
+                    }
+
+                    if (AL10.alGetSourcei(source, AL10.AL_SOURCE_STATE) != AL10.AL_PLAYING) {
+                        AL10.alSourcePlay(source);
+                    }
                 }
-            }
-        } catch (LineUnavailableException exception) {
-            if (running.get()) {
-                LOGGER.warn("Could not initialize voice playback: {}", exception.getMessage());
             }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
         } catch (RuntimeException exception) {
             if (running.get()) {
-                LOGGER.warn("Voice playback stopped: {}", exception.getMessage());
+                LOGGER.warn("Could not initialize or run OpenAL voice playback: {}", exception.getMessage());
             }
         } finally {
-            outputLine = null;
-            if (output != null) {
-                output.stop();
-                output.close();
-            }
-        }
-    }
-
-    private static SourceDataLine openOutputLine(AudioFormat format, String preferredDevice)
-            throws LineUnavailableException {
-        DataLine.Info lineInfo = new DataLine.Info(SourceDataLine.class, format);
-        if (preferredDevice == null || preferredDevice.isBlank()) {
-            return (SourceDataLine) AudioSystem.getLine(lineInfo);
-        }
-
-        for (Mixer.Info mixerInfo : AudioSystem.getMixerInfo()) {
-            if (mixerInfo.getName().equals(preferredDevice)) {
-                Mixer mixer = AudioSystem.getMixer(mixerInfo);
-                if (mixer.isLineSupported(lineInfo)) {
-                    return (SourceDataLine) mixer.getLine(lineInfo);
+            if (alCaps != null) {
+                if (source != 0) {
+                    try {
+                        AL10.alSourceStop(source);
+                        int queued = AL10.alGetSourcei(source, AL10.AL_BUFFERS_QUEUED);
+                        while (queued-- > 0) {
+                            AL10.alSourceUnqueueBuffers(source);
+                        }
+                        AL10.alDeleteSources(source);
+                    } catch (RuntimeException ignored) {
+                        // The device may already have been disconnected.
+                    }
                 }
-                throw new LineUnavailableException("Selected output device does not support voice playback");
+                for (int buffer : buffers) {
+                    if (buffer != 0) {
+                        try {
+                            AL10.alDeleteBuffers(buffer);
+                        } catch (RuntimeException ignored) {
+                            // The device may already have been disconnected.
+                        }
+                    }
+                }
+                AL.setCurrentThread(null);
+            }
+            if (alcCaps != null && alcCaps.ALC_EXT_thread_local_context) {
+                EXTThreadLocalContext.alcSetThreadContext(0L);
+            }
+            if (context != 0L) {
+                ALC10.alcDestroyContext(context);
+            }
+            if (device != 0L) {
+                ALC10.alcCloseDevice(device);
+            }
+            if (alcCaps != null) {
+                ALC.setCapabilities(null);
             }
         }
-        throw new LineUnavailableException("Selected output device is no longer available");
     }
 
     private void decode(IncomingVoiceFrame frame, Map<Long, PeerDecoder> decoders) {
@@ -241,15 +301,6 @@ public final class AudioPlayback implements AutoCloseable {
         running.set(false);
         packets.clear();
         removedPeers.clear();
-        SourceDataLine current = outputLine;
-        if (current != null) {
-            try {
-                current.stop();
-                current.close();
-            } catch (RuntimeException ignored) {
-                // The playback worker may be closing the line at the same time.
-            }
-        }
         if (worker != null) {
             worker.interrupt();
         }

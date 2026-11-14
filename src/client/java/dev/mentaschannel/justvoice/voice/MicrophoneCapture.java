@@ -3,34 +3,32 @@ package dev.mentaschannel.justvoice.voice;
 import io.github.jaredmdobson.concentus.OpusApplication;
 import io.github.jaredmdobson.concentus.OpusEncoder;
 import io.github.jaredmdobson.concentus.OpusException;
+import org.lwjgl.openal.ALC;
+import org.lwjgl.openal.ALC10;
+import org.lwjgl.openal.ALC11;
+import org.lwjgl.openal.AL10;
+import org.lwjgl.openal.ALCCapabilities;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.sound.sampled.AudioFormat;
-import javax.sound.sampled.AudioSystem;
-import javax.sound.sampled.DataLine;
-import javax.sound.sampled.LineUnavailableException;
-import javax.sound.sampled.Mixer;
-import javax.sound.sampled.TargetDataLine;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
- * Opens the selected microphone only while push-to-talk is held. Input gain
- * is applied to PCM before Opus encoding and reflected by the local level meter.
+ * Opens the selected OpenAL capture endpoint only while push-to-talk is held.
+ * Device identifiers are provided by OpenAL Capture enumeration.
  */
 public final class MicrophoneCapture implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger("justvoice");
     private static final int SAMPLE_RATE = 48_000;
     private static final int FRAME_SAMPLES = 960;
-    private static final int FRAME_BYTES = FRAME_SAMPLES * 2;
+    private static final int CAPTURE_BUFFER_SAMPLES = FRAME_SAMPLES * 12;
 
     private final Consumer<byte[]> frameConsumer;
     private final Consumer<String> errorConsumer;
     private final Consumer<Float> levelConsumer;
     private final VoiceSettings settings;
     private final AtomicBoolean running = new AtomicBoolean(true);
-    private volatile TargetDataLine line;
     private Thread worker;
 
     public MicrophoneCapture(
@@ -50,55 +48,68 @@ public final class MicrophoneCapture implements AutoCloseable {
     }
 
     private void captureLoop() {
-        AudioFormat format = new AudioFormat(SAMPLE_RATE, 16, 1, true, false);
-        TargetDataLine openedLine = null;
+        long device = 0L;
+        ALCCapabilities alcCaps = null;
         try {
-            openedLine = openInputLine(format, settings.inputDevice());
-            openedLine.open(format, FRAME_BYTES * 8);
-            line = openedLine;
+            String selectedDevice = settings.inputDevice();
+            device = ALC11.alcCaptureOpenDevice(
+                    selectedDevice == null || selectedDevice.isBlank() ? null : selectedDevice,
+                    SAMPLE_RATE,
+                    AL10.AL_FORMAT_MONO16,
+                    CAPTURE_BUFFER_SAMPLES
+            );
+            if (device == 0L && selectedDevice != null && !selectedDevice.isBlank()) {
+                LOGGER.warn("Selected OpenAL capture device is unavailable; using system default: {}", selectedDevice);
+                settings.setInputDevice("");
+                device = ALC11.alcCaptureOpenDevice(
+                        (String) null,
+                        SAMPLE_RATE,
+                        AL10.AL_FORMAT_MONO16,
+                        CAPTURE_BUFFER_SAMPLES
+                );
+            }
+            if (device == 0L) {
+                throw new IllegalStateException("Could not open an OpenAL capture device");
+            }
+
+            alcCaps = ALC.createCapabilities(device);
+            if (!alcCaps.ALC_EXT_CAPTURE) {
+                throw new IllegalStateException("OpenAL implementation does not support microphone capture");
+            }
             if (!running.get()) {
                 return;
             }
-            openedLine.start();
 
+            ALC11.alcCaptureStart(device);
             OpusEncoder encoder = new OpusEncoder(
                     SAMPLE_RATE, 1, OpusApplication.OPUS_APPLICATION_VOIP
             );
-            byte[] rawFrame = new byte[FRAME_BYTES];
+            short[] captured = new short[FRAME_SAMPLES];
             short[] pcm = new short[FRAME_SAMPLES];
             byte[] encoded = new byte[1024];
 
             while (running.get()) {
-                int offset = 0;
-                while (running.get() && offset < rawFrame.length) {
-                    int count = openedLine.read(rawFrame, offset, rawFrame.length - offset);
-                    if (count < 0) {
-                        return;
-                    }
-                    if (count == 0) {
-                        continue;
-                    }
-                    offset += count;
-                }
-                if (!running.get() || offset != rawFrame.length) {
-                    break;
+                int available = ALC10.alcGetInteger(device, ALC11.ALC_CAPTURE_SAMPLES);
+                if (available < FRAME_SAMPLES) {
+                    Thread.sleep(2L);
+                    continue;
                 }
 
+                ALC11.alcCaptureSamples(device, captured, FRAME_SAMPLES);
                 float gain = settings.inputGain();
                 double squareSum = 0.0;
                 for (int i = 0; i < FRAME_SAMPLES; i++) {
-                    int low = rawFrame[i * 2] & 0xff;
-                    int high = rawFrame[i * 2 + 1];
-                    short rawSample = (short) ((high << 8) | low);
-                    int amplified = Math.round(rawSample * gain);
-                    short sample = (short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, amplified));
+                    int amplified = Math.round(captured[i] * gain);
+                    short sample = (short) Math.max(
+                            Short.MIN_VALUE,
+                            Math.min(Short.MAX_VALUE, amplified)
+                    );
                     pcm[i] = sample;
                     squareSum += (double) sample * sample;
                 }
 
                 float rms = (float) Math.sqrt(squareSum / FRAME_SAMPLES) / 32768.0f;
-                float meterLevel = Math.min(1.0f, rms * 4.0f);
-                levelConsumer.accept(meterLevel);
+                levelConsumer.accept(Math.min(1.0f, rms * 4.0f));
 
                 int length = encoder.encode(
                         pcm, 0, FRAME_SAMPLES, encoded, 0, encoded.length
@@ -109,41 +120,24 @@ public final class MicrophoneCapture implements AutoCloseable {
                     frameConsumer.accept(frame);
                 }
             }
-        } catch (LineUnavailableException | IllegalArgumentException | OpusException exception) {
-            reportFailure("Microphone device unavailable", exception);
-        } catch (RuntimeException exception) {
-            reportFailure("Microphone capture stopped", exception);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+        } catch (RuntimeException | OpusException exception) {
+            reportFailure("OpenAL microphone capture failed", exception);
         } finally {
-            line = null;
-            levelConsumer.accept(0.0f);
-            if (openedLine != null) {
+            if (device != 0L) {
                 try {
-                    openedLine.stop();
-                    openedLine.close();
+                    ALC11.alcCaptureStop(device);
                 } catch (RuntimeException ignored) {
-                    // The UI thread may have closed the line to unblock read().
+                    // Capture may already have been stopped by the device.
                 }
+                ALC11.alcCaptureCloseDevice(device);
             }
-        }
-    }
-
-    private static TargetDataLine openInputLine(AudioFormat format, String preferredDevice)
-            throws LineUnavailableException {
-        DataLine.Info lineInfo = new DataLine.Info(TargetDataLine.class, format);
-        if (preferredDevice == null || preferredDevice.isBlank()) {
-            return (TargetDataLine) AudioSystem.getLine(lineInfo);
-        }
-
-        for (Mixer.Info mixerInfo : AudioSystem.getMixerInfo()) {
-            if (mixerInfo.getName().equals(preferredDevice)) {
-                Mixer mixer = AudioSystem.getMixer(mixerInfo);
-                if (mixer.isLineSupported(lineInfo)) {
-                    return (TargetDataLine) mixer.getLine(lineInfo);
-                }
-                throw new LineUnavailableException("Selected microphone does not support 48 kHz mono input");
+            if (alcCaps != null) {
+                ALC.setCapabilities(null);
             }
+            levelConsumer.accept(0.0f);
         }
-        throw new LineUnavailableException("Selected microphone is no longer available");
     }
 
     private void reportFailure(String reason, Exception exception) {
@@ -161,15 +155,6 @@ public final class MicrophoneCapture implements AutoCloseable {
     @Override
     public void close() {
         running.set(false);
-        TargetDataLine current = line;
-        if (current != null) {
-            try {
-                current.stop();
-                current.close();
-            } catch (RuntimeException ignored) {
-                // The capture worker may be closing the line at the same time.
-            }
-        }
         if (worker != null) {
             worker.interrupt();
         }

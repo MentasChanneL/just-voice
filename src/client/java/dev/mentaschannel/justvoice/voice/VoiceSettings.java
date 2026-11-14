@@ -1,11 +1,8 @@
 package dev.mentaschannel.justvoice.voice;
 
-import javax.sound.sampled.AudioSystem;
-import javax.sound.sampled.Mixer;
-import javax.sound.sampled.AudioFormat;
-import javax.sound.sampled.DataLine;
-import javax.sound.sampled.SourceDataLine;
-import javax.sound.sampled.TargetDataLine;
+import net.minecraft.client.Minecraft;
+import org.lwjgl.openal.ALC11;
+import org.lwjgl.openal.ALUtil;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
@@ -178,31 +175,40 @@ public final class VoiceSettings {
                 .encodeToString(playerName.getBytes(StandardCharsets.UTF_8));
     }
 
+    /** OpenAL capture device names, not Java Sound/ALSA provider labels. */
     public static List<String> availableInputDevices() {
-        return availableDevices(new DataLine.Info(
-                TargetDataLine.class, new AudioFormat(48_000, 16, 1, true, false)
-        ));
-    }
-
-    public static List<String> availableOutputDevices() {
-        return availableDevices(new DataLine.Info(
-                SourceDataLine.class, new AudioFormat(48_000, 16, 1, true, false)
-        ));
-    }
-
-    private static List<String> availableDevices(DataLine.Info lineInfo) {
         List<String> result = new ArrayList<>();
         result.add("");
-        for (Mixer.Info info : AudioSystem.getMixerInfo()) {
-            try {
-                Mixer mixer = AudioSystem.getMixer(info);
-                if (mixer.isLineSupported(lineInfo)) {
-                    result.add(info.getName());
-                }
-            } catch (RuntimeException exception) {
-                System.getLogger("justvoice").log(System.Logger.Level.DEBUG,
-                        "Could not inspect audio device " + info.getName());
+        try {
+            List<String> devices = ALUtil.getStringList(0L, ALC11.ALC_CAPTURE_DEVICE_SPECIFIER);
+            if (devices != null) {
+                devices.stream()
+                        .filter(name -> name != null && !name.isBlank())
+                        .distinct()
+                        .forEach(result::add);
             }
+        } catch (RuntimeException | LinkageError exception) {
+            System.getLogger("justvoice").log(System.Logger.Level.WARNING,
+                    "Could not enumerate OpenAL capture devices: " + exception.getMessage());
+        }
+        return List.copyOf(result);
+    }
+
+    /** Uses Minecraft's own OpenAL output-device list and identifiers. */
+    public static List<String> availableOutputDevices() {
+        List<String> result = new ArrayList<>();
+        result.add("");
+        try {
+            Minecraft client = Minecraft.getInstance();
+            if (client.getSoundManager() != null) {
+                client.getSoundManager().getAvailableSoundDevices().stream()
+                        .filter(name -> name != null && !name.isBlank())
+                        .distinct()
+                        .forEach(result::add);
+            }
+        } catch (RuntimeException exception) {
+            System.getLogger("justvoice").log(System.Logger.Level.WARNING,
+                    "Could not enumerate Minecraft output devices: " + exception.getMessage());
         }
         return List.copyOf(result);
     }
@@ -220,7 +226,7 @@ public final class VoiceSettings {
         try {
             Files.createDirectories(file.getParent());
             try (Writer writer = Files.newBufferedWriter(file)) {
-                properties.store(writer, "Just Voice client audio settings. Player volume and mute preferences are keyed by nickname.");
+                properties.store(writer, "Just Voice client audio settings. Audio device values are OpenAL device specifiers.");
             }
         } catch (IOException exception) {
             System.getLogger("justvoice").log(System.Logger.Level.WARNING,
