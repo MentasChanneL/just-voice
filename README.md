@@ -1,23 +1,73 @@
 # Just Voice
 
-Client-only voice chat mod for Minecraft Java Edition 26.3 (Fabric).
+Client-only global voice chat mod for Minecraft Java Edition 26.3 (Fabric).
 
-Just Voice is designed to work without a mod or plugin on the Minecraft server. The Minecraft client connects directly to an external Mumble-compatible voice server; a separate backend manages temporary voice rooms and player access.
+The mod connects directly to the standalone **Just Voice Server** over QUIC. Each Minecraft world has one voice room. All connected participants in that world can hear each other regardless of distance or dimension.
 
-## Planned responsibilities
+## Player-facing behaviour
 
-- Parse world-generated system directives: `@VOICE INVITE` and `@VOICE CLOSE`.
-- Connect to the external voice service without requiring the standalone Mumble application.
-- Capture microphone audio and play received voice.
-- Encode and decode voice with Opus.
-- Implement the Mumble 1.3.4 client transport (TLS control connection and encrypted UDP voice).
-- Keep backend credentials and room-management secrets out of the client.
+The mod accepts voice directives only from server-sent **action-bar packets** (not player-authored chat). It intercepts the dedicated `/title actionbar` packet before vanilla renders it; overlay-flagged system-chat messages are also supported as a fallback.
 
-## Target
+- `@VOICE INVITE <token>` — replace the current voice session and connect to the configured voice server.
+- `@VOICE CLOSE` — immediately stop capture/playback and close the voice connection.
 
-- Minecraft: 26.3
-- Loader: Fabric
-- Runtime / compile target: Java 25
-- Client-side only; the Minecraft server does not install this mod.
+The server may prepend any number of ordinary spaces before `@VOICE`. The client strips leading whitespace before parsing, so the padding length is not fixed. A recognized directive is canceled before Minecraft displays it. A marker delivered as a normal chat message is discarded but never executed.
 
-The protocol and invite-ticket details are being documented before the audio transport is implemented.
+Example server command:
+
+```mcfunction
+/title PlayerName actionbar {"text":"                         @VOICE INVITE <token>"}
+```
+
+**Security note:** moving a token off-screen is visual concealment, not encryption or access control. The token is still present in the packet delivered to that client and can be inspected by a modified client or packet/debug tooling. Keep tokens short-lived and player-specific; revoke them on disconnect or room teardown. The mod never prints or stores the token in logs or files.
+
+## Voice controls and HUD
+
+- Hold **V** to talk (rebindable under Options → Controls).
+- The microphone is opened only while push-to-talk is held and a voice session is connected.
+- Connection, disconnection, participant join/leave, and error notices are sent to Minecraft chat and localized in the mod language files; the action bar is reserved for private server directives.
+- A supplied microphone icon is shown beside the hotbar while connected: muted/idle when V is released, active while push-to-talk is held.
+- Use /justvoice on and /justvoice off to enable or locally mute voice. OFF stops microphone capture and incoming playback but keeps the room connection alive, so other players do not see repeated join/leave events. Use /justvoice settings for audio settings, /justvoice players for per-player volume and mute controls, and /justvoice list to print the current room roster.
+- The config screen selects microphone/output devices, input gain, master voice volume, per-player volume, and one of four bundled microphone icons. You can import a custom PNG; it is stored in `config/just-voice/mic-icons/custom.png`. On Linux, Just Voice uses Zenity or KDialog when available and falls back to an in-game path field.
+- The bottom-right speaker panel shows up to five participants whose decoded audio contains audible signal. It includes the local player while their microphone is sending audible voice frames, with a live input meter on the local row.
+- Speaker entries use the player's server-provided name and RGB presentation color. Rows fade out smoothly after speech stops.
+- A color-matched `MIC` marker is rendered above active speakers. It is hidden above the local avatar in first person and shown in third person.
+- Incoming audio has an independent Opus decoder per peer and is mixed into one output device.
+
+Audio uses 48 kHz, mono, 20 ms Opus frames. The client has no native Opus dependency and does not require a separate voice-chat application.
+
+## Configuration
+
+All mod files are kept under config/just-voice/. After first launch, edit config/just-voice/just-voice.properties. Audio preferences are stored in config/just-voice/just-voice-audio.properties, and a custom microphone icon is stored at config/just-voice/mic-icons/custom.png.properties`.
+
+```properties
+voice-host=voice.example.com
+voice-port=24454
+ca-cert-file=
+```
+
+- `voice-host` and `voice-port` are the public QUIC endpoint.
+- `ca-cert-file` is optional. Leave it empty when the server certificate chains to a normal trusted CA. For a private/self-signed development certificate, set it to the PEM certificate file that should be trusted by the client.
+- Never put the world API key in this file or in the client mod.
+
+## Transport
+
+- QUIC with TLS certificate and hostname validation, ALPN `just-voice/2`, and QUIC DATAGRAM frames.
+- Idle sessions send QUIC PING keep-alives; no dummy voice/audio packets are generated.
+- The roster protocol separates live peer join/leave events from a full roster snapshot, so reconnecting clients do not announce all existing members as new joins.
+- Each incoming voice packet is tagged with a temporary peer ID generated by the voice server.
+- Player roster metadata (name and RGB color) is synchronized when a peer joins and can be refreshed on demand.
+- The client does not send Minecraft UUIDs, backend URLs, or world API keys to the voice server.
+- The QUIC client uses Kwik, a pure-Java QUIC implementation, so no platform-specific QUIC binaries need to be installed.
+
+Protocol v2 is not compatible with protocol v1. Deploy the matching backend and Fabric client versions together.
+
+## Build
+
+Requires Java 25 and Gradle 9.8.2:
+
+```shell
+gradle --no-daemon build
+```
+
+Kwik's project documents its TLS implementation as not independently security-audited; this mod keeps certificate-chain and hostname validation enabled and does not provide an insecure bypass.

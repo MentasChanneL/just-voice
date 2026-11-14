@@ -1,0 +1,254 @@
+package dev.mentaschannel.justvoice.voice;
+
+import net.minecraft.client.Minecraft;
+import org.lwjgl.openal.ALC11;
+import org.lwjgl.openal.ALUtil;
+
+import java.io.IOException;
+import java.io.Reader;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.List;
+import java.util.Locale;
+import java.util.Properties;
+
+/** Persisted client-side voice and audio preferences. Per-player preferences are global to this client profile. */
+public final class VoiceSettings {
+    private static final String FILE_NAME = "just-voice-audio.properties";
+    private static final float MIN_GAIN = 0.5f;
+    private static final float MAX_GAIN = 3.0f;
+
+    private final Path configDirectory;
+    private final Path file;
+    private final Properties properties = new Properties();
+
+    private boolean enabled = true;
+    private String inputDevice = "";
+    private String outputDevice = "";
+    private float inputGain = 1.0f;
+    private float masterVolume = 1.0f;
+    private String microphoneIcon = "v2";
+
+    private VoiceSettings(Path configDirectory) {
+        this.configDirectory = configDirectory;
+        this.file = configDirectory.resolve(FILE_NAME);
+    }
+
+    public static VoiceSettings load(Path configDirectory) {
+        VoiceSettings settings = new VoiceSettings(configDirectory);
+        try {
+            Files.createDirectories(configDirectory);
+            if (Files.isRegularFile(settings.file)) {
+                try (Reader reader = Files.newBufferedReader(settings.file)) {
+                    settings.properties.load(reader);
+                }
+            }
+        } catch (IOException exception) {
+            System.getLogger("justvoice").log(System.Logger.Level.WARNING,
+                    "Could not read Just Voice audio settings: " + exception.getMessage());
+        }
+
+        settings.enabled = Boolean.parseBoolean(settings.properties.getProperty("enabled", "true"));
+        settings.inputDevice = settings.properties.getProperty("input-device", "");
+        settings.outputDevice = settings.properties.getProperty("output-device", "");
+        settings.inputGain = parseFloat(settings.properties.getProperty("input-gain"), 1.0f, MIN_GAIN, MAX_GAIN);
+        settings.masterVolume = parseFloat(settings.properties.getProperty("master-volume"), 1.0f, 0.0f, 2.0f);
+        settings.microphoneIcon = sanitizeMicrophoneIcon(settings.properties.getProperty("microphone-icon", "v2"));
+        return settings;
+    }
+
+    private static float parseFloat(String raw, float fallback, float minimum, float maximum) {
+        try {
+            float value = Float.parseFloat(raw);
+            return Float.isFinite(value) ? Math.max(minimum, Math.min(maximum, value)) : fallback;
+        } catch (RuntimeException exception) {
+            return fallback;
+        }
+    }
+
+    private static String sanitizeMicrophoneIcon(String value) {
+        if (value != null && (value.matches("v[1-4]") || value.equals("custom"))) {
+            return value;
+        }
+        return "v2";
+    }
+
+    public synchronized boolean isEnabled() {
+        return enabled;
+    }
+
+    public synchronized void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+        save();
+    }
+
+    public synchronized String inputDevice() {
+        return inputDevice;
+    }
+
+    public synchronized void setInputDevice(String inputDevice) {
+        this.inputDevice = inputDevice == null ? "" : inputDevice;
+        save();
+    }
+
+    public synchronized String outputDevice() {
+        return outputDevice;
+    }
+
+    public synchronized void setOutputDevice(String outputDevice) {
+        this.outputDevice = outputDevice == null ? "" : outputDevice;
+        save();
+    }
+
+    public synchronized float inputGain() {
+        return inputGain;
+    }
+
+    public synchronized void setInputGain(float inputGain) {
+        this.inputGain = clamp(inputGain, MIN_GAIN, MAX_GAIN);
+        save();
+    }
+
+    public synchronized float masterVolume() {
+        return masterVolume;
+    }
+
+    public synchronized void setMasterVolume(float masterVolume) {
+        this.masterVolume = clamp(masterVolume, 0.0f, 2.0f);
+        save();
+    }
+
+    public synchronized String microphoneIcon() {
+        return microphoneIcon;
+    }
+
+    public synchronized void setMicrophoneIcon(String microphoneIcon) {
+        this.microphoneIcon = sanitizeMicrophoneIcon(microphoneIcon);
+        save();
+    }
+
+    public Path customMicrophoneIconFile() {
+        return configDirectory.resolve("mic-icons").resolve("custom.png");
+    }
+
+    public synchronized float playerVolume(String playerName) {
+        if (playerName == null || playerName.isBlank()) {
+            return 1.0f;
+        }
+
+        String key = playerVolumeKey(playerName);
+        return parseFloat(properties.getProperty(key), 1.0f, 0.0f, 2.0f);
+    }
+
+    public synchronized void setPlayerVolume(String playerName, float volume) {
+        if (playerName == null || playerName.isBlank()) {
+            return;
+        }
+        properties.setProperty(playerVolumeKey(playerName), Float.toString(clamp(volume, 0.0f, 2.0f)));
+        save();
+    }
+
+    public synchronized boolean isPlayerMuted(String playerName) {
+        if (playerName == null || playerName.isBlank()) {
+            return false;
+        }
+        return Boolean.parseBoolean(properties.getProperty(playerMutedKey(playerName), "false"));
+    }
+
+    public synchronized void setPlayerMuted(String playerName, boolean muted) {
+        if (playerName == null || playerName.isBlank()) {
+            return;
+        }
+        String key = playerMutedKey(playerName);
+        if (muted) {
+            properties.setProperty(key, "true");
+        } else {
+            properties.remove(key);
+        }
+        save();
+    }
+
+    private static String playerVolumeKey(String playerName) {
+        return "player-volume." + encodePlayerName(playerName.toLowerCase(Locale.ROOT));
+    }
+
+    private static String playerMutedKey(String playerName) {
+        return "player-muted." + encodePlayerName(playerName.toLowerCase(Locale.ROOT));
+    }
+
+    private static String encodePlayerName(String playerName) {
+        return Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(playerName.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** OpenAL capture device names, not Java Sound/ALSA provider labels. */
+    public static List<String> availableInputDevices() {
+        List<String> result = new ArrayList<>();
+        result.add("");
+        try {
+            List<String> devices = ALUtil.getStringList(0L, ALC11.ALC_CAPTURE_DEVICE_SPECIFIER);
+            if (devices != null) {
+                devices.stream()
+                        .filter(name -> name != null && !name.isBlank())
+                        .distinct()
+                        .forEach(result::add);
+            }
+        } catch (RuntimeException | LinkageError exception) {
+            System.getLogger("justvoice").log(System.Logger.Level.WARNING,
+                    "Could not enumerate OpenAL capture devices: " + exception.getMessage());
+        }
+        return List.copyOf(result);
+    }
+
+    /** Uses Minecraft's own OpenAL output-device list and identifiers. */
+    public static List<String> availableOutputDevices() {
+        List<String> result = new ArrayList<>();
+        result.add("");
+        try {
+            Minecraft client = Minecraft.getInstance();
+            if (client.getSoundManager() != null) {
+                client.getSoundManager().getAvailableSoundDevices().stream()
+                        .filter(name -> name != null && !name.isBlank())
+                        .distinct()
+                        .forEach(result::add);
+            }
+        } catch (RuntimeException exception) {
+            System.getLogger("justvoice").log(System.Logger.Level.WARNING,
+                    "Could not enumerate Minecraft output devices: " + exception.getMessage());
+        }
+        return List.copyOf(result);
+    }
+
+    public static String displayDevice(String deviceName) {
+        return deviceName == null || deviceName.isBlank() ? "System default" : deviceName;
+    }
+
+    private void save() {
+        properties.setProperty("enabled", Boolean.toString(enabled));
+        properties.setProperty("input-device", inputDevice);
+        properties.setProperty("output-device", outputDevice);
+        properties.setProperty("input-gain", Float.toString(inputGain));
+        properties.setProperty("master-volume", Float.toString(masterVolume));
+        properties.setProperty("microphone-icon", microphoneIcon);
+        try {
+            Files.createDirectories(file.getParent());
+            try (Writer writer = Files.newBufferedWriter(file)) {
+                properties.store(writer, "Just Voice client settings. Device values are OpenAL device specifiers.");
+            }
+        } catch (IOException exception) {
+            System.getLogger("justvoice").log(System.Logger.Level.WARNING,
+                    "Could not save Just Voice audio settings: " + exception.getMessage());
+        }
+    }
+
+    private static float clamp(float value, float minimum, float maximum) {
+        if (!Float.isFinite(value)) {
+            return minimum;
+        }
+        return Math.max(minimum, Math.min(maximum, value));
+    }
+}

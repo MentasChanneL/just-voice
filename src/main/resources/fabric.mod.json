@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "justvoice",
+  "version": "${version}",
+  "name": "Just Voice",
+  "description": "Client-side push-to-talk voice chat for the standalone Just Voice QUIC server.",
+  "authors": [
+    "MentasChanneL"
+  ],
+  "contact": {
+    "sources": "https://github.com/MentasChanneL/just-voice",
+    "issues": "https://github.com/MentasChanneL/just-voice/issues"
+  },
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dev.mentaschannel.justvoice.JustVoiceClient"
+    ],
+    "modmenu": [
+      "dev.mentaschannel.justvoice.client.gui.ModMenuIntegration"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.20.1",
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "fabric-api": "*"
+  },
+  "suggests": {
+    "modmenu": "*"
+  },
+  "mixins": [
+    "justvoice.client.mixins.json"
+  ]
+}
