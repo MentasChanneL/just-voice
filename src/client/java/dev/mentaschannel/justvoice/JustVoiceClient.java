@@ -106,21 +106,45 @@ public final class JustVoiceClient implements ClientModInitializer {
                             return 1;
                         }))
                         .then(ClientCommands.literal("players").executes(context -> {
-                            showRoomRoster();
+                            openPlayersScreen();
                             return 1;
                         }))
                         .then(ClientCommands.literal("settings").executes(context -> {
-                            Minecraft client = Minecraft.getInstance();
-                            client.gui.setScreen(new JustVoiceConfigScreen(client.gui.screen()));
+                            openSettingsScreen();
                             return 1;
                         }))
                         .then(ClientCommands.literal("manage").executes(context -> {
-                            Minecraft client = Minecraft.getInstance();
-                            client.gui.setScreen(new JustVoicePlayersScreen(client.gui.screen()));
+                            openPlayersScreen();
                             return 1;
                         }))
                 )
         );
+    }
+
+    private void openSettingsScreen() {
+        Minecraft client = Minecraft.getInstance();
+        client.execute(() -> {
+            try {
+                client.gui.setScreen(new JustVoiceConfigScreen(client.gui.screen()));
+                JustVoiceChat.info("command.justvoice.settings_opened");
+            } catch (RuntimeException exception) {
+                LOGGER.error("Could not open Just Voice settings screen.", exception);
+                JustVoiceChat.error("command.justvoice.screen_open_failed");
+            }
+        });
+    }
+
+    private void openPlayersScreen() {
+        Minecraft client = Minecraft.getInstance();
+        client.execute(() -> {
+            try {
+                client.gui.setScreen(new JustVoicePlayersScreen(client.gui.screen()));
+                JustVoiceChat.info("command.justvoice.manage_opened");
+            } catch (RuntimeException exception) {
+                LOGGER.error("Could not open Just Voice participant screen.", exception);
+                JustVoiceChat.error("command.justvoice.screen_open_failed");
+            }
+        });
     }
 
     private void showRoomRoster() {

@@ -139,7 +139,7 @@ public final class VoiceSessionManager {
                 playback = createPlayback();
                 playback.start();
                 LOGGER.info("Just Voice session is ready. Hold V to talk.");
-                JustVoiceChat.info("message.justvoice.connected");
+                JustVoiceChat.joined("message.justvoice.connected");
                 lastRosterRequestNanos = System.nanoTime();
                 updateMicrophone();
             }
@@ -181,7 +181,7 @@ public final class VoiceSessionManager {
         QuicVoiceClient current = connection.get();
         boolean isSelf = current != null && profile.peerId() == current.selfPeerId();
         if (previous == null && !isSelf) {
-            JustVoiceChat.info("message.justvoice.peer_joined", profile.name());
+            JustVoiceChat.joined("message.justvoice.peer_joined", profile.name());
         }
     }
 
@@ -215,7 +215,7 @@ public final class VoiceSessionManager {
             currentPlayback.removePeer(peerId);
         }
         if (removed != null) {
-            JustVoiceChat.info("message.justvoice.peer_left", removed.name());
+            JustVoiceChat.left("message.justvoice.peer_left", removed.name());
         }
     }
 
@@ -507,7 +507,7 @@ public final class VoiceSessionManager {
         microphoneLevel = 0.0f;
         closeResources();
         if (notifyPlayer && (hadSession || hadToken)) {
-            JustVoiceChat.info("message.justvoice.disconnected");
+            JustVoiceChat.left("message.justvoice.disconnected");
         }
     }
 

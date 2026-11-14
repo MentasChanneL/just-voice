@@ -21,6 +21,14 @@ public final class JustVoiceChat {
         send(langKey, ChatFormatting.RED, arguments);
     }
 
+    public static void joined(String langKey, Object... arguments) {
+        send(langKey, ChatFormatting.YELLOW, arguments);
+    }
+
+    public static void left(String langKey, Object... arguments) {
+        send(langKey, ChatFormatting.GRAY, arguments);
+    }
+
     private static void send(String langKey, ChatFormatting color, Object... arguments) {
         Minecraft client = Minecraft.getInstance();
         client.execute(() -> client.gui.hud.getChat().addClientSystemMessage(
