@@ -2,6 +2,10 @@ package dev.mentaschannel.justvoice.voice;
 
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.Mixer;
+import javax.sound.sampled.AudioFormat;
+import javax.sound.sampled.DataLine;
+import javax.sound.sampled.SourceDataLine;
+import javax.sound.sampled.TargetDataLine;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
@@ -174,11 +178,31 @@ public final class VoiceSettings {
                 .encodeToString(playerName.getBytes(StandardCharsets.UTF_8));
     }
 
-    public static List<String> availableDevices() {
+    public static List<String> availableInputDevices() {
+        return availableDevices(new DataLine.Info(
+                TargetDataLine.class, new AudioFormat(48_000, 16, 1, true, false)
+        ));
+    }
+
+    public static List<String> availableOutputDevices() {
+        return availableDevices(new DataLine.Info(
+                SourceDataLine.class, new AudioFormat(48_000, 16, 1, true, false)
+        ));
+    }
+
+    private static List<String> availableDevices(DataLine.Info lineInfo) {
         List<String> result = new ArrayList<>();
         result.add("");
         for (Mixer.Info info : AudioSystem.getMixerInfo()) {
-            result.add(info.getName());
+            try {
+                Mixer mixer = AudioSystem.getMixer(info);
+                if (mixer.isLineSupported(lineInfo)) {
+                    result.add(info.getName());
+                }
+            } catch (RuntimeException exception) {
+                System.getLogger("justvoice").log(System.Logger.Level.DEBUG,
+                        "Could not inspect audio device " + info.getName());
+            }
         }
         return List.copyOf(result);
     }

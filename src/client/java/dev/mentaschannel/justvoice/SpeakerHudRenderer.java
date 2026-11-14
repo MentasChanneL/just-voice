@@ -191,7 +191,7 @@ public final class SpeakerHudRenderer {
 
         // Normally sit beside the hotbar. When Minecraft draws its attack
         // indicator there, move the mic icon one slot farther to the right.
-        int x = hotbarRight + (attackIndicatorOnHotbar ? 20 : 4);
+        int x = hotbarRight + (attackIndicatorOnHotbar ? 24 : 4);
         int y = graphics.guiHeight() - iconSize - 4;
 
         // Keep the icon on the right side of the hotbar even at small GUI scales.

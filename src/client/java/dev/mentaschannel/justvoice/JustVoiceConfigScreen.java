@@ -28,8 +28,8 @@ public final class JustVoiceConfigScreen extends Screen {
 
     @Override
     protected void init() {
-        inputDevices = VoiceSettings.availableDevices();
-        outputDevices = VoiceSettings.availableDevices();
+        inputDevices = VoiceSettings.availableInputDevices();
+        outputDevices = VoiceSettings.availableOutputDevices();
         inputDeviceIndex = selectedIndex(inputDevices, settings.inputDevice());
         outputDeviceIndex = selectedIndex(outputDevices, settings.outputDevice());
 
@@ -48,11 +48,17 @@ public final class JustVoiceConfigScreen extends Screen {
                 .bounds(left, y, buttonWidth, 20).build());
         y += 28;
 
-        addRenderableWidget(Button.builder(inputDeviceLabel(), button -> cycleInputDevice())
+        addRenderableWidget(Button.builder(inputDeviceLabel(), button -> {
+                    cycleInputDevice();
+                    button.setMessage(inputDeviceLabel());
+                })
                 .bounds(left, y, buttonWidth, 20).build());
         y += 28;
 
-        addRenderableWidget(Button.builder(outputDeviceLabel(), button -> cycleOutputDevice())
+        addRenderableWidget(Button.builder(outputDeviceLabel(), button -> {
+                    cycleOutputDevice();
+                    button.setMessage(outputDeviceLabel());
+                })
                 .bounds(left, y, buttonWidth, 20).build());
         y += 38;
 
@@ -138,6 +144,10 @@ public final class JustVoiceConfigScreen extends Screen {
     private void cycleInputDevice() {
         inputDeviceIndex = (inputDeviceIndex + 1) % inputDevices.size();
         settings.setInputDevice(inputDevices.get(inputDeviceIndex));
+        var session = JustVoiceClient.getActiveSessionManager();
+        if (session != null) {
+            session.restartMicrophone();
+        }
     }
 
     private void cycleOutputDevice() {

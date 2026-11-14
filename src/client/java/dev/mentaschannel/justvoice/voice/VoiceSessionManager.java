@@ -415,6 +415,12 @@ public final class VoiceSessionManager {
         playback.start();
     }
 
+    public synchronized void restartMicrophone() {
+        stopMicrophone();
+        microphoneUnavailable = false;
+        updateMicrophone();
+    }
+
     public float getMicrophoneLevel() {
         return microphoneLevel;
     }
