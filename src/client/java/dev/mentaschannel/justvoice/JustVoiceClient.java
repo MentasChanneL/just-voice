@@ -115,10 +115,6 @@ public final class JustVoiceClient implements ClientModInitializer {
                             openSettingsScreen();
                             return 1;
                         }))
-                        .then(ClientCommands.literal("manage").executes(context -> {
-                            openPlayersScreen();
-                            return 1;
-                        }))
                 )
         );
     }

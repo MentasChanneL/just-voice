@@ -189,22 +189,35 @@ public final class SpeakerHudRenderer {
         int x = hotbarRight + (attackIndicatorOnHotbar ? 24 : 4);
         int y = graphics.guiHeight() - iconSize - 4;
 
-        // Keep the icon on the right side of the hotbar even at small GUI scales.
         x = Math.min(x, graphics.guiWidth() - iconSize - 2);
         x = Math.max(2, x);
+
+        boolean customIcon = "custom".equals(JustVoiceClient.getVoiceSettings().microphoneIcon());
+        int textureWidth = MicIconManager.textureWidth();
+        int textureHeight = MicIconManager.textureHeight();
+        int sourceU = customIcon ? 0 : 5;
+        int regionWidth = customIcon ? textureWidth : 8;
+        int regionHeight = textureHeight;
+        float scale = Math.min(iconSize / (float) regionWidth, iconSize / (float) regionHeight);
+        int drawWidth = Math.max(1, Math.round(regionWidth * scale));
+        int drawHeight = Math.max(1, Math.round(regionHeight * scale));
+        int drawX = x + (iconSize - drawWidth) / 2;
+        int drawY = y + (iconSize - drawHeight) / 2;
         int tint = manager.isMicrophoneActive() ? 0xFFFFFFFF : 0x66FFFFFF;
 
         graphics.blit(
                 RenderPipelines.GUI_TEXTURED,
                 MicIconManager.texture(),
-                x,
-                y,
+                drawX,
+                drawY,
+                (float) sourceU,
                 0.0f,
-                0.0f,
-                iconSize,
-                iconSize,
-                MicIconManager.textureWidth(),
-                MicIconManager.textureHeight(),
+                drawWidth,
+                drawHeight,
+                regionWidth,
+                regionHeight,
+                textureWidth,
+                textureHeight,
                 tint
         );
     }

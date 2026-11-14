@@ -8,16 +8,15 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.RenderPipelines;
+import org.lwjgl.sdl.SDLDialog;
+import org.lwjgl.sdl.SDL_DialogFileFilter;
+import org.lwjgl.system.MemoryUtil;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
-import java.awt.EventQueue;
-import java.awt.FileDialog;
-import java.awt.Frame;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 /** Main audio settings screen exposed through Mod Menu and /justvoice settings. */
 public final class JustVoiceConfigScreen extends Screen {
@@ -36,7 +35,6 @@ public final class JustVoiceConfigScreen extends Screen {
     private List<String> outputDevices;
     private int inputDeviceIndex;
     private int outputDeviceIndex;
-    private Button importIconButton;
 
     public JustVoiceConfigScreen(Screen parent) {
         super(Component.translatable("screen.justvoice.title"));
@@ -91,7 +89,7 @@ public final class JustVoiceConfigScreen extends Screen {
             Button button = Button.builder(
                             Component.empty(),
                             pressed -> {
-                                if ("custom".equals(id) && !MicIconManager.hasCustomIcon()) {
+                                if ("custom".equals(id)) {
                                     chooseCustomIcon();
                                 } else {
                                     MicIconManager.select(id, settings);
@@ -105,13 +103,6 @@ public final class JustVoiceConfigScreen extends Screen {
             iconCards.add(new IconCard(id, x, iconY));
         }
         y = iconY + ICON_CARD_SIZE + 8;
-
-        importIconButton = addRenderableWidget(Button.builder(
-                        Component.translatable("screen.justvoice.import_mic_icon"),
-                        button -> chooseCustomIcon()
-                )
-                .bounds(center - 100, y, 200, 20).build());
-        y += 28;
 
         addRenderableWidget(new AbstractSliderButton(
                 left, y, buttonWidth, 20,
@@ -188,34 +179,63 @@ public final class JustVoiceConfigScreen extends Screen {
 
     private void chooseCustomIcon() {
         Minecraft client = Minecraft.getInstance();
-        EventQueue.invokeLater(() -> {
-            try {
-                FileDialog dialog = new FileDialog((Frame) null, "Select a PNG microphone icon", FileDialog.LOAD);
-                dialog.setFilenameFilter((directory, name) -> name.toLowerCase(Locale.ROOT).endsWith(".png"));
-                dialog.setVisible(true);
-                String selectedFile = dialog.getFile();
-                if (selectedFile == null || dialog.getDirectory() == null) {
-                    return;
-                }
+        SDL_DialogFileFilter.Buffer filters = SDL_DialogFileFilter.malloc(1);
+        var filterName = MemoryUtil.memUTF8("PNG images");
+        var filterPattern = MemoryUtil.memUTF8("*.png");
 
-                Path selectedPath = Path.of(dialog.getDirectory(), selectedFile);
-                client.execute(() -> {
-                    try {
-                        MicIconManager.importCustomIcon(selectedPath, settings);
-                        importIconButton.setMessage(Component.translatable("screen.justvoice.replace_mic_icon"));
-                        JustVoiceChat.info("screen.justvoice.icon_imported");
-                    } catch (Exception exception) {
-                        System.getLogger("justvoice").log(System.Logger.Level.WARNING,
-                                "Could not import microphone icon: " + exception.getMessage());
-                        JustVoiceChat.error("screen.justvoice.icon_import_failed");
-                    }
-                });
-            } catch (RuntimeException exception) {
-                client.execute(() -> JustVoiceChat.error("screen.justvoice.icon_import_failed"));
-                System.getLogger("justvoice").log(System.Logger.Level.WARNING,
-                        "Could not open the microphone icon file picker: " + exception.getMessage());
-            }
-        });
+        try {
+            filters.get(0).set(filterName, filterPattern);
+            SDLDialog.SDL_ShowOpenFileDialog(
+                    (userdata, filelist, filter) -> {
+                        try {
+                            if (filelist == 0L) {
+                                return;
+                            }
+
+                            long selectedPathPointer = MemoryUtil.memGetAddress(filelist);
+                            if (selectedPathPointer == 0L) {
+                                return;
+                            }
+
+                            Path selectedPath = Path.of(MemoryUtil.memUTF8(selectedPathPointer));
+                            client.execute(() -> importCustomIcon(selectedPath));
+                        } catch (RuntimeException exception) {
+                            client.execute(() -> JustVoiceChat.error("screen.justvoice.icon_import_failed"));
+                            System.getLogger("justvoice").log(System.Logger.Level.WARNING,
+                                    "Could not read selected microphone icon path: "
+                                            + exception.getClass().getSimpleName() + ": " + exception.getMessage());
+                        } finally {
+                            filters.free();
+                            MemoryUtil.memFree(filterName);
+                            MemoryUtil.memFree(filterPattern);
+                        }
+                    },
+                    0L,
+                    client.getWindow().handle(),
+                    filters,
+                    (CharSequence) System.getProperty("user.home"),
+                    false
+            );
+        } catch (RuntimeException | LinkageError exception) {
+            filters.free();
+            MemoryUtil.memFree(filterName);
+            MemoryUtil.memFree(filterPattern);
+            System.getLogger("justvoice").log(System.Logger.Level.WARNING,
+                    "Could not open the SDL microphone icon picker: "
+                            + exception.getClass().getSimpleName() + ": " + exception.getMessage());
+            JustVoiceChat.error("screen.justvoice.icon_import_failed");
+        }
+    }
+
+    private void importCustomIcon(Path selectedPath) {
+        try {
+            MicIconManager.importCustomIcon(selectedPath, settings);
+            JustVoiceChat.info("screen.justvoice.icon_imported");
+        } catch (Exception exception) {
+            System.getLogger("justvoice").log(System.Logger.Level.WARNING,
+                    "Could not import microphone icon: " + exception.getMessage());
+            JustVoiceChat.error("screen.justvoice.icon_import_failed");
+        }
     }
 
     private static int selectedIndex(List<String> devices, String current) {
@@ -309,28 +329,36 @@ public final class JustVoiceConfigScreen extends Screen {
                 Identifier texture = MicIconManager.previewTexture(card.id());
                 int sourceWidth = MicIconManager.previewWidth(card.id());
                 int sourceHeight = MicIconManager.previewHeight(card.id());
-                float scale = Math.min(22.0f / sourceWidth, 22.0f / sourceHeight);
-                int previewWidth = Math.max(1, Math.round(sourceWidth * scale));
-                int previewHeight = Math.max(1, Math.round(sourceHeight * scale));
+                boolean customIcon = "custom".equals(card.id());
+                int sourceU = customIcon ? 0 : 5;
+                int regionWidth = customIcon ? sourceWidth : 8;
+                int regionHeight = sourceHeight;
+                float previewBox = customIcon ? 20.0f : 16.0f;
+                float scale = Math.min(previewBox / regionWidth, previewBox / regionHeight);
+                int previewWidth = Math.max(1, Math.round(regionWidth * scale));
+                int previewHeight = Math.max(1, Math.round(regionHeight * scale));
                 graphics.blit(
                         RenderPipelines.GUI_TEXTURED,
                         texture,
                         card.x() + (ICON_CARD_SIZE - previewWidth) / 2,
-                        card.y() + 4 + (22 - previewHeight) / 2,
-                        0.0f,
+                        card.y() + 5 + (20 - previewHeight) / 2,
+                        (float) sourceU,
                         0.0f,
                         previewWidth,
                         previewHeight,
+                        regionWidth,
+                        regionHeight,
                         sourceWidth,
                         sourceHeight,
                         0xFFFFFFFF
                 );
             }
 
-            Component name = Component.literal("custom".equals(card.id())
-                    ? "★" : card.id().substring(1));
-            graphics.centeredText(font, name,
-                    card.x() + ICON_CARD_SIZE / 2, card.y() + 29, 0xFFDDDFE4);
+            if (!"custom".equals(card.id())) {
+                Component name = Component.literal(card.id().substring(1));
+                graphics.centeredText(font, name,
+                        card.x() + ICON_CARD_SIZE / 2, card.y() + 29, 0xFFDDDFE4);
+            }
         }
     }
 
