@@ -103,16 +103,16 @@ public final class JustVoiceClient implements ClientModInitializer {
                             return 1;
                         }))
                         .then(ClientCommands.literal("list").executes(context -> {
-                            showRoomRoster(context.getSource()::sendFeedback);
+                            showRoomRoster(component -> Minecraft.getInstance().gui.hud.getChat().addClientSystemMessage(component));
                             return 1;
                         }))
                         .then(ClientCommands.literal("players").executes(context -> {
-                            showRoomRoster(context.getSource()::sendFeedback);
+                            showRoomRoster(component -> Minecraft.getInstance().gui.hud.getChat().addClientSystemMessage(component));
                             return 1;
                         }))
                         .then(ClientCommands.literal("settings").executes(context -> {
                             Minecraft client = Minecraft.getInstance();
-                            client.gui.setScreen(new JustVoiceConfigScreen(client.gui.screen()));
+                            client.setScreen(new JustVoiceConfigScreen(client.screen));
                             return 1;
                         }))
                 )
