@@ -195,8 +195,8 @@ public final class SpeakerHudRenderer {
         boolean customIcon = "custom".equals(JustVoiceClient.getVoiceSettings().microphoneIcon());
         int textureWidth = MicIconManager.textureWidth();
         int textureHeight = MicIconManager.textureHeight();
-        int sourceU = customIcon ? 0 : 4;
-        int regionWidth = customIcon ? textureWidth : 9;
+        int sourceU = 0;
+        int regionWidth = textureWidth;
         int regionHeight = textureHeight;
         float scale = Math.min(iconSize / (float) regionWidth, iconSize / (float) regionHeight);
         int drawWidth = Math.max(1, Math.round(regionWidth * scale));

@@ -118,8 +118,29 @@ public final class AudioPlayback implements AutoCloseable {
                 freeBuffers.addLast(buffers[i]);
             }
 
+            boolean voiceWasEnabled = settings.isEnabled();
             while (running.get()) {
                 IncomingVoiceFrame first = packets.poll(20, TimeUnit.MILLISECONDS);
+
+                if (!settings.isEnabled()) {
+                    // Local OFF is not a room disconnect: discard incoming audio
+                    // and silence any already queued samples without closing QUIC.
+                    packets.clear();
+                    removedPeers.clear();
+                    decoders.clear();
+
+                    if (voiceWasEnabled) {
+                        AL10.alSourceStop(source);
+                        int queued = AL10.alGetSourcei(source, AL10.AL_BUFFERS_QUEUED);
+                        while (queued-- > 0) {
+                            freeBuffers.addLast(AL10.alSourceUnqueueBuffers(source));
+                        }
+                        voiceWasEnabled = false;
+                    }
+                    continue;
+                }
+                voiceWasEnabled = true;
+
                 if (first != null) {
                     decode(first, decoders);
                 }

@@ -337,8 +337,8 @@ public final class JustVoiceConfigScreen extends Screen {
                 int sourceWidth = MicIconManager.previewWidth(card.id());
                 int sourceHeight = MicIconManager.previewHeight(card.id());
                 boolean customIcon = "custom".equals(card.id());
-                int sourceU = customIcon ? 0 : 4;
-                int regionWidth = customIcon ? sourceWidth : 9;
+                int sourceU = 0;
+                int regionWidth = sourceWidth;
                 int regionHeight = sourceHeight;
                 float previewBox = customIcon ? 20.0f : 16.0f;
                 float scale = Math.min(previewBox / regionWidth, previewBox / regionHeight);

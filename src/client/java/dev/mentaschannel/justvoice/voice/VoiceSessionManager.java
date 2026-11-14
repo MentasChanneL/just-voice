@@ -132,7 +132,7 @@ public final class VoiceSessionManager {
         try {
             candidate.connect();
             synchronized (this) {
-                if (expectedGeneration != generation || connection.get() != candidate || !settings.isEnabled()) {
+                if (expectedGeneration != generation || connection.get() != candidate) {
                     candidate.close();
                     return;
                 }
@@ -293,7 +293,7 @@ public final class VoiceSessionManager {
 
     public void tick() {
         QuicVoiceClient current = connection.get();
-        if (!settings.isEnabled() || current == null || !current.isJoined()) {
+        if (current == null || !current.isJoined()) {
             return;
         }
 
@@ -430,8 +430,10 @@ public final class VoiceSessionManager {
     }
 
     public boolean isConnected() {
+        // Voice On/Off controls local audio only. Keep reporting the room
+        // transport as connected so the HUD and roster remain available.
         QuicVoiceClient current = connection.get();
-        return settings.isEnabled() && current != null && current.isJoined();
+        return current != null && current.isJoined();
     }
 
     public boolean isMicrophoneActive() {
@@ -448,27 +450,37 @@ public final class VoiceSessionManager {
      */
     public synchronized void setEnabled(boolean enabled) {
         if (settings.isEnabled() == enabled) {
-            if (enabled && connection.get() == null && pendingToken != null && config.isConfigured()) {
-                connectPendingToken();
-            } else {
-                JustVoiceChat.warn(
-                        enabled ? "message.justvoice.already_enabled" : "message.justvoice.already_disabled"
-                );
-            }
             return;
         }
 
         settings.setEnabled(enabled);
+        microphoneUnavailable = false;
+
         if (!enabled) {
-            generation++;
-            pushToTalkDown = false;
-            microphoneUnavailable = false;
-            closeResources();
+            // Do not leave the room on a local mute toggle. A real disconnect
+            // makes every other client announce a peer-left/peer-joined event.
+            stopMicrophone();
+            QuicVoiceClient current = connection.get();
+            if (current != null && current.isJoined()) {
+                lastVoiceAtNanos.remove(current.selfPeerId());
+            }
             JustVoiceChat.info("message.justvoice.voice_disabled");
             return;
         }
 
         JustVoiceChat.info("message.justvoice.voice_enabled");
+        QuicVoiceClient current = connection.get();
+        if (current != null && current.isJoined()) {
+            updateMicrophone();
+            return;
+        }
+
+        // An in-flight connection is allowed to complete while the local voice
+        // toggle is off. Avoid starting a duplicate JOIN for the same token.
+        if (current != null) {
+            return;
+        }
+
         if (pendingToken == null) {
             JustVoiceChat.warn("message.justvoice.waiting_for_invitation");
             return;
