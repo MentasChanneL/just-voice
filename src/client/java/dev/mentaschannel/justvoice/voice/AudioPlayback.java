@@ -9,6 +9,7 @@ import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.DataLine;
 import javax.sound.sampled.LineUnavailableException;
+import javax.sound.sampled.Mixer;
 import javax.sound.sampled.SourceDataLine;
 import java.util.ArrayDeque;
 import java.util.HashMap;
@@ -19,11 +20,11 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.LongConsumer;
+import java.util.function.LongFunction;
 
 /**
  * Decodes each remote speaker with an independent Opus decoder and mixes their
- * PCM frames into one output stream. Network callbacks only enqueue datagrams;
- * all decoder state is owned by the playback worker.
+ * PCM frames into one output stream, with per-player and master volume controls.
  */
 public final class AudioPlayback implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger("justvoice");
@@ -34,16 +35,23 @@ public final class AudioPlayback implements AutoCloseable {
     private static final int MAX_PEER_FRAME_BACKLOG = 4;
     private static final long PEER_DECODER_IDLE_NANOS = TimeUnit.SECONDS.toNanos(3);
 
-    private final ArrayBlockingQueue<IncomingVoiceFrame> packets =
-            new ArrayBlockingQueue<>(QUEUE_CAPACITY);
+    private final ArrayBlockingQueue<IncomingVoiceFrame> packets = new ArrayBlockingQueue<>(QUEUE_CAPACITY);
     private final LongConsumer speakerActivityConsumer;
+    private final LongFunction<String> peerNameResolver;
+    private final VoiceSettings settings;
     private final ConcurrentLinkedQueue<Long> removedPeers = new ConcurrentLinkedQueue<>();
     private final AtomicBoolean running = new AtomicBoolean(true);
     private volatile SourceDataLine outputLine;
     private Thread worker;
 
-    public AudioPlayback(LongConsumer speakerActivityConsumer) {
+    public AudioPlayback(
+            LongConsumer speakerActivityConsumer,
+            LongFunction<String> peerNameResolver,
+            VoiceSettings settings
+    ) {
         this.speakerActivityConsumer = speakerActivityConsumer;
+        this.peerNameResolver = peerNameResolver;
+        this.settings = settings;
     }
 
     public void start() {
@@ -69,12 +77,10 @@ public final class AudioPlayback implements AutoCloseable {
         SourceDataLine output = null;
         Map<Long, PeerDecoder> decoders = new HashMap<>();
         int[] mixed = new int[MIX_FRAME_SAMPLES];
-        short[] outputPcm = new short[MIX_FRAME_SAMPLES];
         byte[] outputBytes = new byte[MIX_FRAME_SAMPLES * 2];
 
         try {
-            DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
-            output = (SourceDataLine) AudioSystem.getLine(info);
+            output = openOutputLine(format, settings.outputDevice());
             output.open(format, SAMPLE_RATE / 5);
             outputLine = output;
             output.start();
@@ -100,13 +106,18 @@ public final class AudioPlayback implements AutoCloseable {
                 long now = System.nanoTime();
                 Iterator<Map.Entry<Long, PeerDecoder>> iterator = decoders.entrySet().iterator();
                 while (iterator.hasNext()) {
-                    PeerDecoder state = iterator.next().getValue();
+                    Map.Entry<Long, PeerDecoder> entry = iterator.next();
+                    PeerDecoder state = entry.getValue();
                     DecodedFrame decoded = state.frames.pollFirst();
                     if (decoded != null) {
-                        hasAudio = true;
-                        int count = Math.min(MIX_FRAME_SAMPLES, decoded.samples());
-                        for (int i = 0; i < count; i++) {
-                            mixed[i] += decoded.pcm()[i];
+                        double playerVolume = settings.playerVolume(peerNameResolver.apply(entry.getKey()));
+                        double volume = playerVolume * settings.masterVolume();
+                        if (volume > 0.0) {
+                            hasAudio = true;
+                            int count = Math.min(MIX_FRAME_SAMPLES, decoded.samples());
+                            for (int i = 0; i < count; i++) {
+                                mixed[i] += (int) Math.round(decoded.pcm()[i] * volume);
+                            }
                         }
                     }
 
@@ -119,9 +130,8 @@ public final class AudioPlayback implements AutoCloseable {
                 if (hasAudio) {
                     for (int i = 0; i < MIX_FRAME_SAMPLES; i++) {
                         int sample = Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, mixed[i]));
-                        outputPcm[i] = (short) sample;
-                        outputBytes[i * 2] = (byte) outputPcm[i];
-                        outputBytes[i * 2 + 1] = (byte) (outputPcm[i] >>> 8);
+                        outputBytes[i * 2] = (byte) sample;
+                        outputBytes[i * 2 + 1] = (byte) (sample >>> 8);
                     }
                     output.write(outputBytes, 0, outputBytes.length);
                 }
@@ -145,6 +155,25 @@ public final class AudioPlayback implements AutoCloseable {
         }
     }
 
+    private static SourceDataLine openOutputLine(AudioFormat format, String preferredDevice)
+            throws LineUnavailableException {
+        DataLine.Info lineInfo = new DataLine.Info(SourceDataLine.class, format);
+        if (preferredDevice == null || preferredDevice.isBlank()) {
+            return (SourceDataLine) AudioSystem.getLine(lineInfo);
+        }
+
+        for (Mixer.Info mixerInfo : AudioSystem.getMixerInfo()) {
+            if (mixerInfo.getName().equals(preferredDevice)) {
+                Mixer mixer = AudioSystem.getMixer(mixerInfo);
+                if (mixer.isLineSupported(lineInfo)) {
+                    return (SourceDataLine) mixer.getLine(lineInfo);
+                }
+                throw new LineUnavailableException("Selected output device does not support voice playback");
+            }
+        }
+        throw new LineUnavailableException("Selected output device is no longer available");
+    }
+
     private void decode(IncomingVoiceFrame frame, Map<Long, PeerDecoder> decoders) {
         PeerDecoder state = decoders.get(frame.peerId());
         if (state == null) {
@@ -164,9 +193,7 @@ public final class AudioPlayback implements AutoCloseable {
         byte[] opus = frame.opusPayload();
         short[] pcm = new short[MAX_FRAME_SAMPLES];
         try {
-            int samples = state.decoder.decode(
-                    opus, 0, opus.length, pcm, 0, MAX_FRAME_SAMPLES, false
-            );
+            int samples = state.decoder.decode(opus, 0, opus.length, pcm, 0, MAX_FRAME_SAMPLES, false);
             if (samples <= 0) {
                 return;
             }

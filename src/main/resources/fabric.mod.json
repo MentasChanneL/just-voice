@@ -15,6 +15,9 @@
   "entrypoints": {
     "client": [
       "dev.mentaschannel.justvoice.JustVoiceClient"
+    ],
+    "modmenu": [
+      "dev.mentaschannel.justvoice.ModMenuIntegration"
     ]
   },
   "depends": {
@@ -22,6 +25,9 @@
     "minecraft": "~26.3",
     "java": ">=25",
     "fabric-api": "*"
+  },
+  "suggests": {
+    "modmenu": "*"
   },
   "mixins": [
     "justvoice.client.mixins.json"

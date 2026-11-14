@@ -15,7 +15,9 @@ import java.security.KeyStore;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -31,6 +33,9 @@ import java.util.function.Consumer;
  *   0x04              = ROSTER_REQUEST
  *   0x05              = PEER_PROFILE
  *   0x06              = PEER_LEFT
+ *   0x08              = ROSTER_BEGIN
+ *   0x09 + profile    = ROSTER_ENTRY
+ *   0x0A              = ROSTER_END
  *
  * Voice:
  *   0x10 + sequence + timestamp + Opus = VOICE
@@ -48,6 +53,9 @@ public final class QuicVoiceClient implements AutoCloseable {
     private static final byte OP_ROSTER_REQUEST = 0x04;
     private static final byte OP_PEER_PROFILE = 0x05;
     private static final byte OP_PEER_LEFT = 0x06;
+    private static final byte OP_ROSTER_BEGIN = 0x08;
+    private static final byte OP_ROSTER_ENTRY = 0x09;
+    private static final byte OP_ROSTER_END = 0x0A;
     private static final byte OP_VOICE = 0x10;
     private static final byte OP_VOICE_RELAY = 0x11;
     private static final byte OP_ERROR = 0x7f;
@@ -56,7 +64,9 @@ public final class QuicVoiceClient implements AutoCloseable {
     private final Consumer<IncomingVoiceFrame> voicePacketConsumer;
     private final Consumer<VoicePeerProfile> peerProfileConsumer;
     private final Consumer<Long> peerLeftConsumer;
+    private final Consumer<List<VoicePeerProfile>> rosterConsumer;
     private final Consumer<String> errorConsumer;
+    private final List<VoicePeerProfile> rosterBuffer = new ArrayList<>();
     private final CountDownLatch joinedLatch = new CountDownLatch(1);
     private final AtomicInteger sequence = new AtomicInteger();
 
@@ -71,12 +81,14 @@ public final class QuicVoiceClient implements AutoCloseable {
             Consumer<IncomingVoiceFrame> voicePacketConsumer,
             Consumer<VoicePeerProfile> peerProfileConsumer,
             Consumer<Long> peerLeftConsumer,
+            Consumer<List<VoicePeerProfile>> rosterConsumer,
             Consumer<String> errorConsumer
     ) {
         this.credentials = credentials;
         this.voicePacketConsumer = voicePacketConsumer;
         this.peerProfileConsumer = peerProfileConsumer;
         this.peerLeftConsumer = peerLeftConsumer;
+        this.rosterConsumer = rosterConsumer;
         this.errorConsumer = errorConsumer;
     }
 
@@ -176,7 +188,23 @@ public final class QuicVoiceClient implements AutoCloseable {
         }
 
         if (opcode == OP_PEER_PROFILE) {
-            handlePeerProfile(data);
+            handlePeerProfile(data, true);
+            return;
+        }
+
+        if (opcode == OP_ROSTER_BEGIN && data.length == 1) {
+            rosterBuffer.clear();
+            return;
+        }
+
+        if (opcode == OP_ROSTER_ENTRY) {
+            handlePeerProfile(data, false);
+            return;
+        }
+
+        if (opcode == OP_ROSTER_END && data.length == 1) {
+            rosterConsumer.accept(List.copyOf(rosterBuffer));
+            rosterBuffer.clear();
             return;
         }
 
@@ -223,7 +251,7 @@ public final class QuicVoiceClient implements AutoCloseable {
         LOGGER.debug("Ignored unknown Just Voice datagram opcode 0x{}", Integer.toHexString(opcode & 0xff));
     }
 
-    private void handlePeerProfile(byte[] data) {
+    private void handlePeerProfile(byte[] data, boolean liveJoinEvent) {
         if (data.length < 1 + PEER_ID_BYTES + 1 + 3) {
             return;
         }
@@ -243,7 +271,12 @@ public final class QuicVoiceClient implements AutoCloseable {
         int color = ((data[colorOffset] & 0xff) << 16)
                 | ((data[colorOffset + 1] & 0xff) << 8)
                 | (data[colorOffset + 2] & 0xff);
-        peerProfileConsumer.accept(new VoicePeerProfile(getLong(data, 1), name, color));
+        VoicePeerProfile profile = new VoicePeerProfile(getLong(data, 1), name, color);
+        if (liveJoinEvent) {
+            peerProfileConsumer.accept(profile);
+        } else {
+            rosterBuffer.add(profile);
+        }
     }
 
     public void requestRoster() {

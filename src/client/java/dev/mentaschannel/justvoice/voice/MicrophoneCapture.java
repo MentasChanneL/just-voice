@@ -10,14 +10,14 @@ import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.DataLine;
 import javax.sound.sampled.LineUnavailableException;
+import javax.sound.sampled.Mixer;
 import javax.sound.sampled.TargetDataLine;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
- * Opens the microphone only while push-to-talk is held. Audio is encoded as
- * 20 ms, 48 kHz, mono Opus frames. The local input meter is calculated from
- * the PCM samples before encoding.
+ * Opens the selected microphone only while push-to-talk is held. Input gain
+ * is applied to PCM before Opus encoding and reflected by the local level meter.
  */
 public final class MicrophoneCapture implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger("justvoice");
@@ -28,6 +28,7 @@ public final class MicrophoneCapture implements AutoCloseable {
     private final Consumer<byte[]> frameConsumer;
     private final Consumer<String> errorConsumer;
     private final Consumer<Float> levelConsumer;
+    private final VoiceSettings settings;
     private final AtomicBoolean running = new AtomicBoolean(true);
     private volatile TargetDataLine line;
     private Thread worker;
@@ -35,11 +36,13 @@ public final class MicrophoneCapture implements AutoCloseable {
     public MicrophoneCapture(
             Consumer<byte[]> frameConsumer,
             Consumer<String> errorConsumer,
-            Consumer<Float> levelConsumer
+            Consumer<Float> levelConsumer,
+            VoiceSettings settings
     ) {
         this.frameConsumer = frameConsumer;
         this.errorConsumer = errorConsumer;
         this.levelConsumer = levelConsumer;
+        this.settings = settings;
     }
 
     public void start() {
@@ -50,8 +53,7 @@ public final class MicrophoneCapture implements AutoCloseable {
         AudioFormat format = new AudioFormat(SAMPLE_RATE, 16, 1, true, false);
         TargetDataLine openedLine = null;
         try {
-            DataLine.Info info = new DataLine.Info(TargetDataLine.class, format);
-            openedLine = (TargetDataLine) AudioSystem.getLine(info);
+            openedLine = openInputLine(format, settings.inputDevice());
             openedLine.open(format, FRAME_BYTES * 8);
             line = openedLine;
             if (!running.get()) {
@@ -82,11 +84,14 @@ public final class MicrophoneCapture implements AutoCloseable {
                     break;
                 }
 
+                float gain = settings.inputGain();
                 double squareSum = 0.0;
                 for (int i = 0; i < FRAME_SAMPLES; i++) {
                     int low = rawFrame[i * 2] & 0xff;
                     int high = rawFrame[i * 2 + 1];
-                    short sample = (short) ((high << 8) | low);
+                    short rawSample = (short) ((high << 8) | low);
+                    int amplified = Math.round(rawSample * gain);
+                    short sample = (short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, amplified));
                     pcm[i] = sample;
                     squareSum += (double) sample * sample;
                 }
@@ -122,6 +127,25 @@ public final class MicrophoneCapture implements AutoCloseable {
         }
     }
 
+    private static TargetDataLine openInputLine(AudioFormat format, String preferredDevice)
+            throws LineUnavailableException {
+        DataLine.Info lineInfo = new DataLine.Info(TargetDataLine.class, format);
+        if (preferredDevice == null || preferredDevice.isBlank()) {
+            return (TargetDataLine) AudioSystem.getLine(lineInfo);
+        }
+
+        for (Mixer.Info mixerInfo : AudioSystem.getMixerInfo()) {
+            if (mixerInfo.getName().equals(preferredDevice)) {
+                Mixer mixer = AudioSystem.getMixer(mixerInfo);
+                if (mixer.isLineSupported(lineInfo)) {
+                    return (TargetDataLine) mixer.getLine(lineInfo);
+                }
+                throw new LineUnavailableException("Selected microphone does not support 48 kHz mono input");
+            }
+        }
+        throw new LineUnavailableException("Selected microphone is no longer available");
+    }
+
     private void reportFailure(String reason, Exception exception) {
         if (!running.get()) {
             return;
@@ -145,6 +169,9 @@ public final class MicrophoneCapture implements AutoCloseable {
             } catch (RuntimeException ignored) {
                 // The capture worker may be closing the line at the same time.
             }
+        }
+        if (worker != null) {
+            worker.interrupt();
         }
     }
 }

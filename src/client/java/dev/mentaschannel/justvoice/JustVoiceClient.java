@@ -3,8 +3,12 @@ package dev.mentaschannel.justvoice;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.mentaschannel.justvoice.voice.VoiceClientConfig;
 import dev.mentaschannel.justvoice.voice.VoiceDirective;
+import dev.mentaschannel.justvoice.voice.VoicePeerProfile;
 import dev.mentaschannel.justvoice.voice.VoiceSessionManager;
+import dev.mentaschannel.justvoice.voice.VoiceSettings;
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
@@ -18,15 +22,18 @@ import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
+
 /**
  * Client-only entrypoint. Voice directives are accepted only from server
- * action-bar packets; player-authored chat is never used for credentials.
+ * action-bar messages; player-authored chat is never used for credentials.
  */
 public final class JustVoiceClient implements ClientModInitializer {
     public static final String MOD_ID = "justvoice";
     private static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
     private static volatile VoiceSessionManager activeSessionManager;
+    private static volatile VoiceSettings voiceSettings;
 
     private VoiceSessionManager sessionManager;
     private KeyMapping pushToTalk;
@@ -34,7 +41,8 @@ public final class JustVoiceClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         VoiceClientConfig config = VoiceClientConfig.load(FabricLoader.getInstance().getConfigDir());
-        sessionManager = new VoiceSessionManager(config, JustVoiceClient::showChatNotice);
+        voiceSettings = VoiceSettings.load(FabricLoader.getInstance().getConfigDir());
+        sessionManager = new VoiceSessionManager(config, voiceSettings, JustVoiceClient::showChatNotice);
         activeSessionManager = sessionManager;
         SpeakerHudRenderer.register();
         VoiceOverheadRenderLayer.register();
@@ -52,6 +60,8 @@ public final class JustVoiceClient implements ClientModInitializer {
         if (!config.isConfigured()) {
             LOGGER.warn("Just Voice server is not configured; edit config/just-voice.properties.");
         }
+
+        registerClientCommands();
 
         ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
             if (!VoiceDirective.hasMarker(message.getString())) {
@@ -81,21 +91,76 @@ public final class JustVoiceClient implements ClientModInitializer {
         LOGGER.info("Just Voice client initialized. Push-to-talk: V (rebindable in Controls).");
     }
 
+    private void registerClientCommands() {
+        ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) ->
+                dispatcher.register(ClientCommandManager.literal("justvoice")
+                        .then(ClientCommandManager.literal("on").executes(context -> {
+                            sessionManager.setEnabled(true);
+                            return 1;
+                        }))
+                        .then(ClientCommandManager.literal("off").executes(context -> {
+                            sessionManager.setEnabled(false);
+                            return 1;
+                        }))
+                        .then(ClientCommandManager.literal("list").executes(context -> {
+                            showRoomRoster(context.getSource()::sendFeedback);
+                            return 1;
+                        }))
+                        .then(ClientCommandManager.literal("players").executes(context -> {
+                            showRoomRoster(context.getSource()::sendFeedback);
+                            return 1;
+                        }))
+                        .then(ClientCommandManager.literal("settings").executes(context -> {
+                            Minecraft client = Minecraft.getInstance();
+                            client.gui.setScreen(new JustVoiceConfigScreen(client.gui.screen()));
+                            return 1;
+                        }))
+                )
+        );
+    }
+
+    private void showRoomRoster(java.util.function.Consumer<Component> output) {
+        if (!sessionManager.isConnected()) {
+            output.accept(Component.translatable("command.justvoice.not_connected")
+                    .withStyle(ChatFormatting.RED));
+            return;
+        }
+
+        sessionManager.requestRoster();
+        List<VoicePeerProfile> members = sessionManager.getRoomMembers();
+        output.accept(Component.translatable("command.justvoice.roster_header", members.size())
+                .withStyle(ChatFormatting.GRAY));
+
+        if (members.isEmpty()) {
+            output.accept(Component.translatable("command.justvoice.roster_empty")
+                    .withStyle(ChatFormatting.GRAY));
+            return;
+        }
+
+        for (VoicePeerProfile member : members) {
+            String label = member.name();
+            if (sessionManager.isSelfPeer(member.peerId())) {
+                label += " (you)";
+            }
+            output.accept(Component.literal("• " + label)
+                    .withStyle(style -> style.withColor(member.rgbColor())));
+        }
+    }
+
     public static VoiceSessionManager getActiveSessionManager() {
         return activeSessionManager;
     }
 
+    public static VoiceSettings getVoiceSettings() {
+        return voiceSettings;
+    }
+
     private static void showChatNotice(VoiceSessionManager.ChatNotice notice) {
         Minecraft client = Minecraft.getInstance();
-        client.execute(() -> {
-            if (client.player == null) {
-                return;
-            }
-
-            client.gui.hud.getChat().addClientSystemMessage(
-                    Component.translatable(notice.translationKey()).withStyle(notice.color())
-            );
-        });
+        client.execute(() -> client.gui.hud.getChat().addClientSystemMessage(
+                Component.translatable(notice.translationKey(), notice.arguments())
+                        .withStyle(notice.color())
+        ));
     }
 
     /**

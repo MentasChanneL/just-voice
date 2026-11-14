@@ -3,6 +3,7 @@ package dev.mentaschannel.justvoice;
 import dev.mentaschannel.justvoice.voice.VoiceSessionManager;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
+import net.minecraft.client.AttackIndicatorStatus;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -11,7 +12,6 @@ import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.resources.DefaultPlayerSkin;
 import net.minecraft.resources.Identifier;
-import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.entity.player.PlayerSkin;
 
 import java.util.List;
@@ -184,21 +184,20 @@ public final class SpeakerHudRenderer {
 
         int iconSize = 16;
         int screenCenter = graphics.guiWidth() / 2;
-        int hotbarLeft = screenCenter - 91;
         int hotbarRight = screenCenter + 91;
+        boolean attackIndicatorOnHotbar =
+                Minecraft.getInstance().options.attackIndicator().get() == AttackIndicatorStatus.HOTBAR;
 
-        // Place the microphone over the side where the hotbar attack indicator
-        // belongs. The opposite side is reserved for the offhand slot.
-        boolean offhandOnRight = clientMainArmIsLeft(manager);
-        int x = offhandOnRight ? hotbarLeft - 22 : hotbarRight + 6;
+        // Normally sit beside the hotbar. When Minecraft draws its attack
+        // indicator there, move the mic icon one slot farther to the right.
+        int x = hotbarRight + (attackIndicatorOnHotbar ? 28 : 6);
         int y = graphics.guiHeight() - 38;
 
-        // On extremely narrow GUI scales, fall back to the center above the bar.
-        if (x < 2 || x + iconSize > graphics.guiWidth() - 2) {
-            x = screenCenter - iconSize / 2;
-            y = graphics.guiHeight() - 48;
+        // Keep the icon inside the screen on narrow GUI scales.
+        if (x + iconSize > graphics.guiWidth() - 2) {
+            x = Math.max(2, hotbarRight - iconSize - 6);
         }
-        int tint = manager.isMicrophoneActive() ? 0xFFFFFFFF : 0x88FFFFFF;
+        int tint = manager.isMicrophoneActive() ? 0xFFFFFFFF : 0x66FFFFFF;
 
         graphics.blit(
                 RenderPipelines.GUI_TEXTURED,
@@ -213,11 +212,6 @@ public final class SpeakerHudRenderer {
                 iconSize,
                 tint
         );
-    }
-
-    private static boolean clientMainArmIsLeft(VoiceSessionManager manager) {
-        Minecraft client = Minecraft.getInstance();
-        return client.player != null && client.player.getMainArm() == HumanoidArm.LEFT;
     }
 
     private static int tintedBackground(int argb) {
