@@ -25,9 +25,9 @@ Example server command:
 
 - Hold **V** to talk (rebindable under Options → Controls).
 - The microphone is opened only while push-to-talk is held and a voice session is connected.
-- Connection, disconnection, participant join/leave, and error notices are sent to Minecraft chat and localized in the mod language files; the action bar is reserved for private server directives.
+- Connection, disconnection, participant join/leave, automatic reconnect, and error notices are sent to Minecraft chat and localized in the mod language files; the action bar is reserved for private server directives.
 - A supplied microphone icon is shown beside the hotbar while connected: muted/idle when V is released, active while push-to-talk is held.
-- Use /justvoice on and /justvoice off to enable or locally mute voice. OFF stops microphone capture and incoming playback but keeps the room connection alive, so other players do not see repeated join/leave events. Use /justvoice settings for audio settings, /justvoice players for per-player volume and mute controls, and /justvoice list to print the current room roster.
+- Use /justvoice on and /justvoice off to enable or locally mute voice. OFF stops microphone capture and incoming playback but keeps the room connection alive, so other players do not see repeated join/leave events. Use /justvoice reconnect to force a reconnect or let automatic reconnect recover from a temporary voice-server/network outage with exponential backoff. Use /justvoice settings for audio settings, /justvoice players for per-player volume and mute controls, and /justvoice list to print the current room roster.
 - The config screen selects microphone/output devices, input gain, master voice volume, per-player volume, and one of four bundled microphone icons. You can import a custom PNG; it is stored in `config/just-voice/mic-icons/custom.png`. On Linux, Just Voice uses Zenity or KDialog when available and falls back to an in-game path field.
 - The bottom-right speaker panel shows up to five participants whose decoded audio contains audible signal. It includes the local player while their microphone is sending audible voice frames, with a live input meter on the local row.
 - Speaker entries use the player's server-provided name and RGB presentation color. Rows fade out smoothly after speech stops.

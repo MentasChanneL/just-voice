@@ -24,6 +24,7 @@ public final class VoiceSessionManager {
     private static final long SPEAKER_VISIBLE_NANOS = SPEAKER_FADE_START_NANOS + SPEAKER_FADE_DURATION_NANOS;
     private static final long ROSTER_REFRESH_NANOS = TimeUnit.SECONDS.toNanos(5);
     private static final int MAX_VISIBLE_SPEAKERS = 5;
+    private static final long[] RECONNECT_DELAYS_SECONDS = {1, 2, 4, 8, 15, 30};
 
     public record SpeakerHudEntry(
             long peerId,
@@ -57,6 +58,10 @@ public final class VoiceSessionManager {
     private volatile long lastRosterRequestNanos;
     private volatile String pendingToken;
     private long generation;
+    private int reconnectAttempts;
+    private long nextReconnectAtNanos;
+    private boolean reconnectNoticeSent;
+    private boolean hasConnectedBefore;
 
     public VoiceSessionManager(
             VoiceClientConfig config,
@@ -73,6 +78,10 @@ public final class VoiceSessionManager {
     public synchronized void invite(String token) {
         JustVoiceChat.info("message.justvoice.got_invite");
         pendingToken = token;
+        reconnectAttempts = 0;
+        nextReconnectAtNanos = 0L;
+        reconnectNoticeSent = false;
+        hasConnectedBefore = false;
         if (!settings.isEnabled()) {
             JustVoiceChat.warn("message.justvoice.token_saved_disabled");
             return;
@@ -97,15 +106,21 @@ public final class VoiceSessionManager {
             JustVoiceChat.error("message.justvoice.invalid_invitation");
             return;
         }
-        connectWithCredentials(credentials);
+        connectWithCredentials(credentials, false);
     }
 
-    private synchronized void connectWithCredentials(VoiceCredentials credentials) {
+    private synchronized void connectWithCredentials(VoiceCredentials credentials, boolean reconnecting) {
         closeResources();
         long currentGeneration = ++generation;
         microphoneUnavailable = false;
         microphoneLevel = 0.0f;
         lastRosterRequestNanos = 0L;
+        nextReconnectAtNanos = 0L;
+
+        if (reconnecting && !reconnectNoticeSent) {
+            JustVoiceChat.warn("message.justvoice.reconnecting");
+            reconnectNoticeSent = true;
+        }
 
         Thread.ofVirtual().name("just-voice-connect").start(
                 () -> connect(currentGeneration, credentials)
@@ -140,7 +155,14 @@ public final class VoiceSessionManager {
                 playback = createPlayback();
                 playback.start();
                 LOGGER.info("Just Voice session is ready");
-                JustVoiceChat.successfully("message.justvoice.connected");
+                boolean restored = hasConnectedBefore;
+                hasConnectedBefore = true;
+                reconnectAttempts = 0;
+                nextReconnectAtNanos = 0L;
+                reconnectNoticeSent = false;
+                JustVoiceChat.successfully(
+                        restored ? "message.justvoice.reconnected" : "message.justvoice.connected"
+                );
                 lastRosterRequestNanos = System.nanoTime();
                 updateMicrophone();
             }
@@ -151,7 +173,7 @@ public final class VoiceSessionManager {
                     peerProfiles.clear();
                     lastVoiceAtNanos.clear();
                     LOGGER.warn("Could not connect to Just Voice server: {}", exception.getMessage());
-                    JustVoiceChat.error("message.justvoice.connection_failed");
+                    scheduleReconnect();
                 }
             }
             candidate.close();
@@ -215,15 +237,26 @@ public final class VoiceSessionManager {
     }
 
     private synchronized void handleTransportError(long expectedGeneration, String message) {
-        if (expectedGeneration != generation) return;
+        if (expectedGeneration != generation || connection.get() == null) return;
         String sanitized = sanitizeServerMessage(message);
         LOGGER.warn("Just Voice connection ended: {}", sanitized);
         stopMicrophone();
         closeAudio();
-        connection.set(null);
+        QuicVoiceClient failedConnection = connection.getAndSet(null);
         peerProfiles.clear();
         lastVoiceAtNanos.clear();
-        JustVoiceChat.error(transportChatKey(sanitized));
+
+        if (isExpiredTokenError(sanitized)) {
+            pendingToken = null;
+            resetReconnectState();
+            JustVoiceChat.error("message.justvoice.invitation_expired");
+        } else {
+            scheduleReconnect();
+        }
+
+        if (failedConnection != null) {
+            Thread.ofVirtual().name("just-voice-disconnect").start(failedConnection::close);
+        }
     }
 
     private synchronized void handleMicrophoneError(long expectedGeneration, String message) {
@@ -275,11 +308,25 @@ public final class VoiceSessionManager {
         microphone.start();
     }
 
-    public void tick() {
+    public synchronized void tick() {
         QuicVoiceClient current = connection.get();
-        if (current == null || !current.isJoined()) return;
-
         long now = System.nanoTime();
+
+        if (current == null) {
+            if (settings.isEnabled()
+                    && pendingToken != null
+                    && nextReconnectAtNanos != 0L
+                    && now >= nextReconnectAtNanos) {
+                connectPendingToken(true);
+            }
+            return;
+        }
+
+        if (!current.isJoined()) return;
+        if (!current.isTransportConnected()) {
+            handleTransportError(generation, "voice transport is no longer connected");
+            return;
+        }
         if (now - lastRosterRequestNanos >= ROSTER_REFRESH_NANOS) {
             lastRosterRequestNanos = now;
             current.requestRoster();
@@ -432,10 +479,30 @@ public final class VoiceSessionManager {
             JustVoiceChat.warn("message.justvoice.waiting_for_invitation");
             return;
         }
-        connectPendingToken();
+        connectPendingToken(hasConnectedBefore);
     }
 
-    private void connectPendingToken() {
+    public synchronized void reconnect() {
+        if (!settings.isEnabled()) {
+            JustVoiceChat.warn("message.justvoice.enable_before_reconnect");
+            return;
+        }
+        if (pendingToken == null) {
+            JustVoiceChat.error("message.justvoice.reconnect_invitation_required");
+            return;
+        }
+        if (!config.isConfigured()) {
+            JustVoiceChat.error("message.justvoice.server_not_configured");
+            return;
+        }
+
+        reconnectAttempts = 0;
+        nextReconnectAtNanos = 0L;
+        reconnectNoticeSent = false;
+        connectPendingToken(true);
+    }
+
+    private void connectPendingToken(boolean reconnecting) {
         if (!config.isConfigured()) {
             JustVoiceChat.error("message.justvoice.server_not_configured");
             return;
@@ -446,7 +513,7 @@ public final class VoiceSessionManager {
                     config.voicePort(),
                     config.certificateFile(),
                     pendingToken
-            ));
+            ), reconnecting);
         } catch (IllegalArgumentException exception) {
             pendingToken = null;
             JustVoiceChat.error("message.justvoice.invalid_invitation");
@@ -466,6 +533,8 @@ public final class VoiceSessionManager {
         boolean hadSession = connection.get() != null;
         boolean hadToken = pendingToken != null;
         pendingToken = null;
+        resetReconnectState();
+        hasConnectedBefore = false;
         generation++;
         pushToTalkDown = false;
         microphoneUnavailable = false;
@@ -475,13 +544,34 @@ public final class VoiceSessionManager {
             JustVoiceChat.info("message.justvoice.disconnected");
     }
 
-    private static String transportChatKey(String message) {
-        String normalized = message.toLowerCase(Locale.ROOT);
-        if (normalized.contains("invalid or expired voice token"))
-            return "message.justvoice.invitation_expired";
-        if (normalized.contains("datagram"))
-            return "message.justvoice.protocol_error";
-        return "message.justvoice.connection_lost";
+    private void scheduleReconnect() {
+        if (!settings.isEnabled() || pendingToken == null) {
+            nextReconnectAtNanos = 0L;
+            return;
+        }
+
+        int delayIndex = Math.min(reconnectAttempts, RECONNECT_DELAYS_SECONDS.length - 1);
+        long delaySeconds = RECONNECT_DELAYS_SECONDS[delayIndex];
+        reconnectAttempts++;
+        nextReconnectAtNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(delaySeconds);
+
+        if (!reconnectNoticeSent) {
+            JustVoiceChat.warn("message.justvoice.reconnecting");
+            reconnectNoticeSent = true;
+        }
+        LOGGER.info("Will retry Just Voice connection in {} seconds (attempt {}).",
+                delaySeconds, reconnectAttempts);
+    }
+
+    private void resetReconnectState() {
+        reconnectAttempts = 0;
+        nextReconnectAtNanos = 0L;
+        reconnectNoticeSent = false;
+    }
+
+    private static boolean isExpiredTokenError(String message) {
+        return message != null
+                && message.toLowerCase(Locale.ROOT).contains("invalid or expired voice token");
     }
 
     private void closeResources() {
