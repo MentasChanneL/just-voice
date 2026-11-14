@@ -8,7 +8,12 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
+import java.awt.EventQueue;
+import java.awt.FileDialog;
+import java.awt.Frame;
+import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 
 /** Main audio settings screen exposed through Mod Menu and /justvoice settings. */
 public final class JustVoiceConfigScreen extends Screen {
@@ -19,6 +24,7 @@ public final class JustVoiceConfigScreen extends Screen {
     private List<String> outputDevices;
     private int inputDeviceIndex;
     private int outputDeviceIndex;
+    private Button microphoneIconButton;
 
     public JustVoiceConfigScreen(Screen parent) {
         super(Component.translatable("screen.justvoice.title"));
@@ -46,21 +52,35 @@ public final class JustVoiceConfigScreen extends Screen {
                     button.setMessage(voiceEnabledLabel());
                 })
                 .bounds(left, y, buttonWidth, 20).build());
-        y += 28;
+        y += 26;
 
         addRenderableWidget(Button.builder(inputDeviceLabel(), button -> {
                     cycleInputDevice();
                     button.setMessage(inputDeviceLabel());
                 })
                 .bounds(left, y, buttonWidth, 20).build());
-        y += 28;
+        y += 26;
 
         addRenderableWidget(Button.builder(outputDeviceLabel(), button -> {
                     cycleOutputDevice();
                     button.setMessage(outputDeviceLabel());
                 })
                 .bounds(left, y, buttonWidth, 20).build());
-        y += 38;
+        y += 26;
+
+        microphoneIconButton = addRenderableWidget(Button.builder(microphoneIconLabel(), button -> {
+                    MicIconManager.cycle(settings);
+                    button.setMessage(microphoneIconLabel());
+                })
+                .bounds(left, y, buttonWidth, 20).build());
+        y += 26;
+
+        addRenderableWidget(Button.builder(
+                        Component.translatable("screen.justvoice.import_mic_icon"),
+                        button -> chooseCustomIcon()
+                )
+                .bounds(left, y, buttonWidth, 20).build());
+        y += 32;
 
         addRenderableWidget(new AbstractSliderButton(
                 left, y, buttonWidth, 20,
@@ -86,7 +106,7 @@ public final class JustVoiceConfigScreen extends Screen {
                 updateMessage();
             }
         });
-        y += 29;
+        y += 28;
 
         addRenderableWidget(new AbstractSliderButton(
                 left, y, buttonWidth, 20,
@@ -111,17 +131,49 @@ public final class JustVoiceConfigScreen extends Screen {
                 updateMessage();
             }
         });
-        y += 36;
+        y += 30;
 
         addRenderableWidget(Button.builder(
                         Component.translatable("screen.justvoice.manage_players"),
                         button -> Minecraft.getInstance().gui.setScreen(new JustVoicePlayersScreen(this))
                 )
                 .bounds(left, y, buttonWidth, 22).build());
-        y += 34;
+        y += 30;
 
         addRenderableWidget(Button.builder(Component.translatable("gui.done"), button -> onClose())
                 .bounds(center - 100, Math.min(height - 28, y), 200, 20).build());
+    }
+
+    private void chooseCustomIcon() {
+        Minecraft client = Minecraft.getInstance();
+        EventQueue.invokeLater(() -> {
+            try {
+                FileDialog dialog = new FileDialog((Frame) null, "Select a PNG microphone icon", FileDialog.LOAD);
+                dialog.setFilenameFilter((directory, name) -> name.toLowerCase(Locale.ROOT).endsWith(".png"));
+                dialog.setVisible(true);
+                String selectedFile = dialog.getFile();
+                if (selectedFile == null || dialog.getDirectory() == null) {
+                    return;
+                }
+
+                Path selectedPath = Path.of(dialog.getDirectory(), selectedFile);
+                client.execute(() -> {
+                    try {
+                        MicIconManager.importCustomIcon(selectedPath, settings);
+                        microphoneIconButton.setMessage(microphoneIconLabel());
+                        JustVoiceChat.info("screen.justvoice.icon_imported");
+                    } catch (Exception exception) {
+                        System.getLogger("justvoice").log(System.Logger.Level.WARNING,
+                                "Could not import microphone icon: " + exception.getMessage());
+                        JustVoiceChat.error("screen.justvoice.icon_import_failed");
+                    }
+                });
+            } catch (RuntimeException exception) {
+                client.execute(() -> JustVoiceChat.error("screen.justvoice.icon_import_failed"));
+                System.getLogger("justvoice").log(System.Logger.Level.WARNING,
+                        "Could not open the microphone icon file picker: " + exception.getMessage());
+            }
+        });
     }
 
     private static int selectedIndex(List<String> devices, String current) {
@@ -134,6 +186,13 @@ public final class JustVoiceConfigScreen extends Screen {
                 settings.isEnabled()
                         ? "screen.justvoice.voice_enabled"
                         : "screen.justvoice.voice_disabled"
+        );
+    }
+
+    private Component microphoneIconLabel() {
+        return Component.translatable(
+                "screen.justvoice.microphone_icon",
+                MicIconManager.displayName(settings)
         );
     }
 

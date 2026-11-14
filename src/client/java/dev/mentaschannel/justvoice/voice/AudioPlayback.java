@@ -60,7 +60,7 @@ public final class AudioPlayback implements AutoCloseable {
     }
 
     public void start() {
-        worker = Thread.ofVirtual().name("just-voice-playback").start(this::playbackLoop);
+        worker = Thread.ofPlatform().daemon().name("just-voice-playback").start(this::playbackLoop);
     }
 
     public void enqueue(IncomingVoiceFrame frame) {
@@ -219,11 +219,14 @@ public final class AudioPlayback implements AutoCloseable {
                         }
                     }
                 }
-                AL.setCurrentThread(null);
             }
+            // Clear the native thread-local context before destroying it. OpenAL
+            // contexts are bound to OS threads, so this worker must remain a
+            // dedicated platform thread rather than a migratable virtual thread.
             if (alcCaps != null && alcCaps.ALC_EXT_thread_local_context) {
                 EXTThreadLocalContext.alcSetThreadContext(0L);
             }
+            AL.setCurrentThread(null);
             if (context != 0L) {
                 ALC10.alcDestroyContext(context);
             }
@@ -301,8 +304,17 @@ public final class AudioPlayback implements AutoCloseable {
         running.set(false);
         packets.clear();
         removedPeers.clear();
-        if (worker != null) {
-            worker.interrupt();
+        Thread currentWorker = worker;
+        if (currentWorker != null && currentWorker != Thread.currentThread()) {
+            currentWorker.interrupt();
+            try {
+                currentWorker.join(2_000L);
+                if (currentWorker.isAlive()) {
+                    LOGGER.warn("Voice playback worker did not stop within 2 seconds.");
+                }
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
 }

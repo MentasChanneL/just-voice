@@ -5,6 +5,7 @@ import java.io.Reader;
 import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Properties;
 import java.util.logging.Logger;
 
@@ -18,9 +19,10 @@ public record VoiceClientConfig(String voiceHost, int voicePort, Path certificat
     private static final String PORT_KEY = "voice-port";
     private static final String CERT_KEY = "ca-cert-file";
     private static final String HOST_PLACEHOLDER = "voice.example.invalid";
+    private static final String FILE_NAME = "just-voice.properties";
 
     public static VoiceClientConfig load(Path configDirectory) {
-        Path configFile = configDirectory.resolve("just-voice.properties");
+        Path configFile = migrateLegacyFile(configDirectory);
         Properties properties = new Properties();
 
         if (Files.notExists(configFile)) {
@@ -55,6 +57,36 @@ public record VoiceClientConfig(String voiceHost, int voicePort, Path certificat
         }
 
         return new VoiceClientConfig(host, port, certificate);
+    }
+
+    private static Path migrateLegacyFile(Path configDirectory) {
+        Path target = configDirectory.resolve(FILE_NAME);
+        if (Files.exists(target)) {
+            return target;
+        }
+
+        Path parent = configDirectory.toAbsolutePath().normalize().getParent();
+        if (parent == null) {
+            return target;
+        }
+
+        Path legacy = parent.resolve(FILE_NAME);
+        if (!Files.isRegularFile(legacy)) {
+            return target;
+        }
+
+        try {
+            Files.createDirectories(configDirectory);
+            try {
+                Files.move(legacy, target, StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException moveException) {
+                Files.copy(legacy, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException exception) {
+            LOGGER.warning("Could not migrate old Just Voice configuration: " + exception.getMessage());
+            return legacy;
+        }
+        return target;
     }
 
     private static int parsePort(String value) {

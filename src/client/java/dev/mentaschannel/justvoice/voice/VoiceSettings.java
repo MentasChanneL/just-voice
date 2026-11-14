@@ -3,12 +3,14 @@ package dev.mentaschannel.justvoice.voice;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.openal.ALC11;
 import org.lwjgl.openal.ALUtil;
+
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -21,6 +23,7 @@ public final class VoiceSettings {
     private static final float MIN_GAIN = 0.5f;
     private static final float MAX_GAIN = 3.0f;
 
+    private final Path configDirectory;
     private final Path file;
     private final Properties properties = new Properties();
 
@@ -29,13 +32,16 @@ public final class VoiceSettings {
     private String outputDevice = "";
     private float inputGain = 1.0f;
     private float masterVolume = 1.0f;
+    private String microphoneIcon = "v2";
 
-    private VoiceSettings(Path file) {
+    private VoiceSettings(Path configDirectory, Path file) {
+        this.configDirectory = configDirectory;
         this.file = file;
     }
 
     public static VoiceSettings load(Path configDirectory) {
-        VoiceSettings settings = new VoiceSettings(configDirectory.resolve(FILE_NAME));
+        Path settingsFile = migrateLegacyFile(configDirectory);
+        VoiceSettings settings = new VoiceSettings(configDirectory, settingsFile);
         try {
             Files.createDirectories(configDirectory);
             if (Files.isRegularFile(settings.file)) {
@@ -53,7 +59,39 @@ public final class VoiceSettings {
         settings.outputDevice = settings.properties.getProperty("output-device", "");
         settings.inputGain = parseFloat(settings.properties.getProperty("input-gain"), 1.0f, MIN_GAIN, MAX_GAIN);
         settings.masterVolume = parseFloat(settings.properties.getProperty("master-volume"), 1.0f, 0.0f, 2.0f);
+        settings.microphoneIcon = sanitizeMicrophoneIcon(settings.properties.getProperty("microphone-icon", "v2"));
         return settings;
+    }
+
+    private static Path migrateLegacyFile(Path configDirectory) {
+        Path target = configDirectory.resolve(FILE_NAME);
+        if (Files.exists(target)) {
+            return target;
+        }
+
+        Path parent = configDirectory.toAbsolutePath().normalize().getParent();
+        if (parent == null) {
+            return target;
+        }
+
+        Path legacy = parent.resolve(FILE_NAME);
+        if (!Files.isRegularFile(legacy)) {
+            return target;
+        }
+
+        try {
+            Files.createDirectories(configDirectory);
+            try {
+                Files.move(legacy, target, StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException moveException) {
+                Files.copy(legacy, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException exception) {
+            System.getLogger("justvoice").log(System.Logger.Level.WARNING,
+                    "Could not migrate the old audio configuration: " + exception.getMessage());
+            return legacy;
+        }
+        return target;
     }
 
     private static float parseFloat(String raw, float fallback, float minimum, float maximum) {
@@ -63,6 +101,13 @@ public final class VoiceSettings {
         } catch (RuntimeException exception) {
             return fallback;
         }
+    }
+
+    private static String sanitizeMicrophoneIcon(String value) {
+        if (value != null && (value.matches("v[1-4]") || value.equals("custom"))) {
+            return value;
+        }
+        return "v2";
     }
 
     public synchronized boolean isEnabled() {
@@ -110,6 +155,19 @@ public final class VoiceSettings {
         save();
     }
 
+    public synchronized String microphoneIcon() {
+        return microphoneIcon;
+    }
+
+    public synchronized void setMicrophoneIcon(String microphoneIcon) {
+        this.microphoneIcon = sanitizeMicrophoneIcon(microphoneIcon);
+        save();
+    }
+
+    public Path customMicrophoneIconFile() {
+        return configDirectory.resolve("mic-icons").resolve("custom.png");
+    }
+
     public synchronized float playerVolume(String playerName) {
         if (playerName == null || playerName.isBlank()) {
             return 1.0f;
@@ -118,7 +176,6 @@ public final class VoiceSettings {
         String key = playerVolumeKey(playerName);
         String raw = properties.getProperty(key);
         if (raw == null) {
-            // Migrate values saved by the earlier case-sensitive key scheme.
             String legacyKey = legacyPlayerVolumeKey(playerName);
             raw = properties.getProperty(legacyKey);
             if (raw != null) {
@@ -223,10 +280,11 @@ public final class VoiceSettings {
         properties.setProperty("output-device", outputDevice);
         properties.setProperty("input-gain", Float.toString(inputGain));
         properties.setProperty("master-volume", Float.toString(masterVolume));
+        properties.setProperty("microphone-icon", microphoneIcon);
         try {
             Files.createDirectories(file.getParent());
             try (Writer writer = Files.newBufferedWriter(file)) {
-                properties.store(writer, "Just Voice client audio settings. Audio device values are OpenAL device specifiers.");
+                properties.store(writer, "Just Voice client settings. Device values are OpenAL device specifiers.");
             }
         } catch (IOException exception) {
             System.getLogger("justvoice").log(System.Logger.Level.WARNING,

@@ -48,5 +48,9 @@
   "screen.justvoice.refresh": "Refresh",
   "screen.justvoice.page": "Page %s / %s",
   "modmenu.nameTranslation.justvoice": "Just Voice",
-  "modmenu.summaryTranslation.justvoice": "Global Minecraft voice chat with push-to-talk."
+  "modmenu.summaryTranslation.justvoice": "Global Minecraft voice chat with push-to-talk.",
+  "screen.justvoice.microphone_icon": "Microphone icon: %s",
+  "screen.justvoice.import_mic_icon": "Import custom PNG icon",
+  "screen.justvoice.icon_imported": "Custom microphone icon loaded.",
+  "screen.justvoice.icon_import_failed": "Could not load icon. Use a PNG up to 2 MB and no larger than 512×512."
 }

@@ -39,8 +39,10 @@ public final class JustVoiceClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        VoiceClientConfig config = VoiceClientConfig.load(FabricLoader.getInstance().getConfigDir());
-        voiceSettings = VoiceSettings.load(FabricLoader.getInstance().getConfigDir());
+        var modConfigDirectory = FabricLoader.getInstance().getConfigDir().resolve("just-voice");
+        VoiceClientConfig config = VoiceClientConfig.load(modConfigDirectory);
+        voiceSettings = VoiceSettings.load(modConfigDirectory);
+        MicIconManager.reload(voiceSettings);
         sessionManager = new VoiceSessionManager(config, voiceSettings);
         activeSessionManager = sessionManager;
         SpeakerHudRenderer.register();
@@ -57,7 +59,7 @@ public final class JustVoiceClient implements ClientModInitializer {
         ));
 
         if (!config.isConfigured()) {
-            LOGGER.warn("Just Voice server is not configured; edit config/just-voice.properties.");
+            LOGGER.warn("Just Voice server is not configured; edit config/just-voice/just-voice.properties.");
         }
 
         registerClientCommands();

@@ -29,11 +29,6 @@ public final class SpeakerHudRenderer {
     private static final int ROW_HEIGHT = 24;
     private static final int ROW_GAP = 3;
 
-    private static final Identifier MICROPHONE = Identifier.fromNamespaceAndPath(
-            JustVoiceClient.MOD_ID,
-            "textures/gui/sprites/mics/v2.png"
-    );
-
     private SpeakerHudRenderer() {
     }
 
@@ -201,15 +196,15 @@ public final class SpeakerHudRenderer {
 
         graphics.blit(
                 RenderPipelines.GUI_TEXTURED,
-                MICROPHONE,
+                MicIconManager.texture(),
                 x,
                 y,
                 0.0f,
                 0.0f,
                 iconSize,
                 iconSize,
-                iconSize,
-                iconSize,
+                MicIconManager.textureWidth(),
+                MicIconManager.textureHeight(),
                 tint
         );
     }

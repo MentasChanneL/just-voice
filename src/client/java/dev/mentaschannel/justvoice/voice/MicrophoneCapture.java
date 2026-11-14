@@ -11,6 +11,7 @@ import org.lwjgl.openal.ALCCapabilities;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -44,7 +45,7 @@ public final class MicrophoneCapture implements AutoCloseable {
     }
 
     public void start() {
-        worker = Thread.ofVirtual().name("just-voice-microphone").start(this::captureLoop);
+        worker = Thread.ofPlatform().daemon().name("just-voice-microphone").start(this::captureLoop);
     }
 
     private void captureLoop() {
@@ -145,18 +146,31 @@ public final class MicrophoneCapture implements AutoCloseable {
             return;
         }
         LOGGER.warn("{}: {}", reason, exception.getMessage());
-        try {
-            errorConsumer.accept(reason);
-        } catch (RuntimeException callbackException) {
-            LOGGER.debug("Could not report microphone failure to the session manager.");
-        }
+        // Do not call back into the synchronized session manager from this
+        // worker: device switching waits for this native capture thread to stop.
+        ForkJoinPool.commonPool().execute(() -> {
+            try {
+                errorConsumer.accept(reason);
+            } catch (RuntimeException callbackException) {
+                LOGGER.debug("Could not report microphone failure to the session manager.");
+            }
+        });
     }
 
     @Override
     public void close() {
         running.set(false);
-        if (worker != null) {
-            worker.interrupt();
+        Thread currentWorker = worker;
+        if (currentWorker != null && currentWorker != Thread.currentThread()) {
+            currentWorker.interrupt();
+            try {
+                currentWorker.join(2_000L);
+                if (currentWorker.isAlive()) {
+                    LOGGER.warn("Microphone capture worker did not stop within 2 seconds.");
+                }
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
 }
