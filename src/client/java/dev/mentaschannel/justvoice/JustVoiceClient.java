@@ -7,7 +7,6 @@ import dev.mentaschannel.justvoice.voice.VoicePeerProfile;
 import dev.mentaschannel.justvoice.voice.VoiceSessionManager;
 import dev.mentaschannel.justvoice.voice.VoiceSettings;
 import net.fabricmc.api.ClientModInitializer;
-import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
@@ -16,6 +15,7 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
+import net.minecraft.commands.Commands;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -93,24 +93,24 @@ public final class JustVoiceClient implements ClientModInitializer {
 
     private void registerClientCommands() {
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) ->
-                dispatcher.register(ClientCommandManager.literal("justvoice")
-                        .then(ClientCommandManager.literal("on").executes(context -> {
+                dispatcher.register(Commands.literal("justvoice")
+                        .then(Commands.literal("on").executes(context -> {
                             sessionManager.setEnabled(true);
                             return 1;
                         }))
-                        .then(ClientCommandManager.literal("off").executes(context -> {
+                        .then(Commands.literal("off").executes(context -> {
                             sessionManager.setEnabled(false);
                             return 1;
                         }))
-                        .then(ClientCommandManager.literal("list").executes(context -> {
+                        .then(Commands.literal("list").executes(context -> {
                             showRoomRoster(context.getSource()::sendFeedback);
                             return 1;
                         }))
-                        .then(ClientCommandManager.literal("players").executes(context -> {
+                        .then(Commands.literal("players").executes(context -> {
                             showRoomRoster(context.getSource()::sendFeedback);
                             return 1;
                         }))
-                        .then(ClientCommandManager.literal("settings").executes(context -> {
+                        .then(Commands.literal("settings").executes(context -> {
                             Minecraft client = Minecraft.getInstance();
                             client.gui.setScreen(new JustVoiceConfigScreen(client.gui.screen()));
                             return 1;
