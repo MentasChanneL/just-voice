@@ -57,5 +57,6 @@
   "screen.justvoice.mic_icon.v3": "Microphone style 3",
   "screen.justvoice.mic_icon.v4": "Microphone style 4",
   "screen.justvoice.mic_icon.custom": "Custom icon — click to replace",
-  "screen.justvoice.mic_icon.upload": "Click to choose a PNG"
+  "screen.justvoice.mic_icon.upload": "Click to choose a PNG",
+  "screen.justvoice.mic_icon.replace": "Custom icon selected — click again to replace"
 }

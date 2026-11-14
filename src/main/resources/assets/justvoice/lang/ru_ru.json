@@ -57,5 +57,6 @@
   "screen.justvoice.mic_icon.v3": "Стиль микрофона 3",
   "screen.justvoice.mic_icon.v4": "Стиль микрофона 4",
   "screen.justvoice.mic_icon.custom": "Своя иконка — нажми, чтобы заменить",
-  "screen.justvoice.mic_icon.upload": "Нажми, чтобы выбрать PNG"
+  "screen.justvoice.mic_icon.upload": "Нажми, чтобы выбрать PNG",
+  "screen.justvoice.mic_icon.replace": "Своя иконка выбрана — нажми ещё раз, чтобы заменить"
 }

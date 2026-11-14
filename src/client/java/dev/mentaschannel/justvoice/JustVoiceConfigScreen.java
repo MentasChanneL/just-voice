@@ -90,7 +90,12 @@ public final class JustVoiceConfigScreen extends Screen {
                             Component.empty(),
                             pressed -> {
                                 if ("custom".equals(id)) {
-                                    chooseCustomIcon();
+                                    if (!MicIconManager.hasCustomIcon()
+                                            || "custom".equals(settings.microphoneIcon())) {
+                                        chooseCustomIcon();
+                                    } else {
+                                        MicIconManager.select(id, settings);
+                                    }
                                 } else {
                                     MicIconManager.select(id, settings);
                                 }
@@ -169,9 +174,11 @@ public final class JustVoiceConfigScreen extends Screen {
     private Component iconTooltip(String id) {
         if ("custom".equals(id)) {
             return Component.translatable(
-                    MicIconManager.hasCustomIcon()
-                            ? "screen.justvoice.mic_icon.custom"
-                            : "screen.justvoice.mic_icon.upload"
+                    !MicIconManager.hasCustomIcon()
+                            ? "screen.justvoice.mic_icon.upload"
+                            : "custom".equals(settings.microphoneIcon())
+                                    ? "screen.justvoice.mic_icon.replace"
+                                    : "screen.justvoice.mic_icon.custom"
             );
         }
         return Component.translatable("screen.justvoice.mic_icon." + id);
@@ -330,8 +337,8 @@ public final class JustVoiceConfigScreen extends Screen {
                 int sourceWidth = MicIconManager.previewWidth(card.id());
                 int sourceHeight = MicIconManager.previewHeight(card.id());
                 boolean customIcon = "custom".equals(card.id());
-                int sourceU = customIcon ? 0 : 5;
-                int regionWidth = customIcon ? sourceWidth : 8;
+                int sourceU = customIcon ? 0 : 4;
+                int regionWidth = customIcon ? sourceWidth : 9;
                 int regionHeight = sourceHeight;
                 float previewBox = customIcon ? 20.0f : 16.0f;
                 float scale = Math.min(previewBox / regionWidth, previewBox / regionHeight);
