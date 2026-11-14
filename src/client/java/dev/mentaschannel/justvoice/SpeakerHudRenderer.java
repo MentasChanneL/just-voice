@@ -11,6 +11,7 @@ import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.resources.DefaultPlayerSkin;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.entity.player.PlayerSkin;
 
 import java.util.List;
@@ -182,11 +183,21 @@ public final class SpeakerHudRenderer {
         }
 
         int iconSize = 16;
-        int x = graphics.guiWidth() / 2 - iconSize / 2;
+        int screenCenter = graphics.guiWidth() / 2;
+        int hotbarLeft = screenCenter - 91;
+        int hotbarRight = screenCenter + 91;
 
-        // Keep it above the hotbar/experience bar. The vanilla hotbar attack
-        // indicator occupies the left or right side of the hotbar itself.
-        int y = graphics.guiHeight() - 48;
+        // Place the microphone over the side where the hotbar attack indicator
+        // belongs. The opposite side is reserved for the offhand slot.
+        boolean offhandOnRight = clientMainArmIsLeft(manager);
+        int x = offhandOnRight ? hotbarLeft - 22 : hotbarRight + 6;
+        int y = graphics.guiHeight() - 38;
+
+        // On extremely narrow GUI scales, fall back to the center above the bar.
+        if (x < 2 || x + iconSize > graphics.guiWidth() - 2) {
+            x = screenCenter - iconSize / 2;
+            y = graphics.guiHeight() - 48;
+        }
         int tint = manager.isMicrophoneActive() ? 0xFFFFFFFF : 0x88FFFFFF;
 
         graphics.blit(
@@ -202,6 +213,11 @@ public final class SpeakerHudRenderer {
                 iconSize,
                 tint
         );
+    }
+
+    private static boolean clientMainArmIsLeft(VoiceSessionManager manager) {
+        Minecraft client = Minecraft.getInstance();
+        return client.player != null && client.player.getMainArm() == HumanoidArm.LEFT;
     }
 
     private static int tintedBackground(int argb) {
