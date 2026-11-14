@@ -1,34 +1,36 @@
 package dev.mentaschannel.justvoice;
 
-import net.minecraft.client.renderer.RenderPipelines;
 import dev.mentaschannel.justvoice.voice.VoiceSessionManager;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.PlayerFaceExtractor;
+import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.resources.DefaultPlayerSkin;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.player.PlayerSkin;
 
 import java.util.List;
 
 /**
- * Minimal Team Fortress-style speaker panel. The local microphone state is
- * represented by the supplied mic textures beside the vanilla hotbar.
+ * Team-coloured speaker panel. The local microphone state is represented by
+ * one translucent/opaque icon above the hotbar, clear of the attack indicator.
  */
 public final class SpeakerHudRenderer {
-    private static final int PANEL_BACKGROUND = 0xB010141D;
-    private static final int PANEL_BORDER = 0x603A4658;
     private static final int TEXT_COLOR = 0xFFF0F2F5;
     private static final int METER_BACKGROUND = 0xFF333B47;
     private static final int METER_COLOR = 0xFF48D597;
 
-    private static final Identifier MIC_ON = Identifier.fromNamespaceAndPath(
+    private static final int AVATAR_SIZE = 16;
+    private static final int ROW_HEIGHT = 24;
+    private static final int ROW_GAP = 3;
+
+    private static final Identifier MICROPHONE = Identifier.fromNamespaceAndPath(
             JustVoiceClient.MOD_ID,
-            "textures/gui/sprites/mic_on.png"
-    );
-    private static final Identifier MIC_OFF = Identifier.fromNamespaceAndPath(
-            JustVoiceClient.MOD_ID,
-            "textures/gui/sprites/mic_off.png"
+            "textures/gui/sprites/mics/v2.png"
     );
 
     private SpeakerHudRenderer() {
@@ -44,7 +46,7 @@ public final class SpeakerHudRenderer {
 
     private static void render(GuiGraphicsExtractor graphics, DeltaTracker deltaTracker) {
         Minecraft client = Minecraft.getInstance();
-        if (client.player == null) {
+        if (client.player == null || client.gui.hud.isHidden()) {
             return;
         }
 
@@ -69,32 +71,53 @@ public final class SpeakerHudRenderer {
         int guiWidth = graphics.guiWidth();
         int guiHeight = graphics.guiHeight();
         int margin = 8;
-        int rowHeight = 22;
-        int rowGap = 3;
         int maxTextWidth = 0;
         for (VoiceSessionManager.SpeakerHudEntry speaker : speakers) {
             maxTextWidth = Math.max(maxTextWidth, client.font.width(speaker.name()));
         }
 
-        int panelWidth = Math.max(112, Math.min(220, maxTextWidth + 54));
+        int panelWidth = Math.max(140, Math.min(240, maxTextWidth + 70));
         int x = guiWidth - margin - panelWidth;
-        int y = guiHeight - 34 - speakers.size() * (rowHeight + rowGap);
+        int y = guiHeight - 34 - speakers.size() * (ROW_HEIGHT + ROW_GAP);
 
         long now = System.nanoTime();
         for (VoiceSessionManager.SpeakerHudEntry speaker : speakers) {
             float opacity = speaker.opacity(now);
             if (opacity <= 0.0f) {
-                y += rowHeight + rowGap;
+                y += ROW_HEIGHT + ROW_GAP;
                 continue;
             }
 
-            int bottom = y + rowHeight;
-            graphics.fill(x, y, x + panelWidth, bottom, withOpacity(PANEL_BACKGROUND, opacity));
-            graphics.outline(x, y, panelWidth, rowHeight, withOpacity(PANEL_BORDER, opacity));
-            graphics.fill(x, y, x + 3, bottom, withOpacity(speaker.color(), opacity));
+            int bottom = y + ROW_HEIGHT;
+            int background = tintedBackground(speaker.color());
+            graphics.fill(
+                    x,
+                    y,
+                    x + panelWidth,
+                    bottom,
+                    withOpacity(background, opacity)
+            );
+            graphics.outline(
+                    x,
+                    y,
+                    panelWidth,
+                    ROW_HEIGHT,
+                    withOpacity(speaker.color(), opacity)
+            );
+
+            PlayerSkin skin = resolvePlayerSkin(client, speaker.name());
+            PlayerFaceExtractor.extractRenderState(
+                    graphics,
+                    skin,
+                    x + 4,
+                    y + 4,
+                    AVATAR_SIZE,
+                    withOpacity(0xFFFFFFFF, opacity)
+            );
 
             String label = speaker.name();
-            int maxNameWidth = panelWidth - 50;
+            int textX = x + 26;
+            int maxNameWidth = panelWidth - 66;
             if (client.font.width(label) > maxNameWidth) {
                 label = client.font.plainSubstrByWidth(label, maxNameWidth - 8) + "…";
             }
@@ -102,9 +125,9 @@ public final class SpeakerHudRenderer {
             graphics.text(
                     client.font,
                     label,
-                    x + 9,
-                    y + 7,
-                    withOpacity(speaker.self() ? speaker.color() : TEXT_COLOR, opacity),
+                    textX,
+                    y + 8,
+                    withOpacity(TEXT_COLOR, opacity),
                     true
             );
 
@@ -112,7 +135,7 @@ public final class SpeakerHudRenderer {
                 drawMiniMeter(
                         graphics,
                         x + panelWidth - 31,
-                        y + 8,
+                        y + 9,
                         22,
                         6,
                         speaker.inputLevel(),
@@ -120,16 +143,34 @@ public final class SpeakerHudRenderer {
                 );
             } else {
                 graphics.fill(
-                        x + panelWidth - 12,
-                        y + 8,
-                        x + panelWidth - 6,
-                        y + 14,
+                        x + panelWidth - 11,
+                        y + 9,
+                        x + panelWidth - 5,
+                        y + 15,
                         withOpacity(speaker.color(), opacity)
                 );
             }
 
-            y += rowHeight + rowGap;
+            y += ROW_HEIGHT + ROW_GAP;
         }
+    }
+
+    /**
+     * Skin profiles are already known to the Minecraft client from the player
+     * list. Do not download skin URLs or ask the voice server for textures.
+     */
+    private static PlayerSkin resolvePlayerSkin(Minecraft client, String playerName) {
+        if (client.getConnection() != null) {
+            PlayerInfo playerInfo = client.getConnection().getPlayerInfoIgnoreCase(playerName);
+            if (playerInfo != null) {
+                PlayerSkin skin = playerInfo.getSkin();
+                if (skin != null) {
+                    return skin;
+                }
+            }
+        }
+
+        return DefaultPlayerSkin.getDefaultSkin();
     }
 
     private static void renderMicrophoneIcon(
@@ -140,24 +181,40 @@ public final class SpeakerHudRenderer {
             return;
         }
 
-        int guiWidth = graphics.guiWidth();
-        int guiHeight = graphics.guiHeight();
-        int hotbarLeft = guiWidth / 2 - 91;
-        int hotbarRight = hotbarLeft + 182;
         int iconSize = 16;
-        int x = hotbarRight + 6;
+        int x = graphics.guiWidth() / 2 - iconSize / 2;
 
-        // On narrow GUI scales, put the icon to the left of the hotbar instead.
-        if (x + iconSize > guiWidth - 3) {
-            x = hotbarLeft - iconSize - 6;
-        }
-        x = Math.max(3, Math.min(x, guiWidth - iconSize - 3));
+        // Keep it above the hotbar/experience bar. The vanilla hotbar attack
+        // indicator occupies the left or right side of the hotbar itself.
+        int y = graphics.guiHeight() - 48;
+        int tint = manager.isMicrophoneActive() ? 0xFFFFFFFF : 0x88FFFFFF;
 
-        // Center the 16x16 icon against the vanilla hotbar.
-        int y = guiHeight - 22 + 3;
-        Identifier texture = manager.isMicrophoneActive() ? MIC_ON : MIC_OFF;
-        graphics.blit(RenderPipelines.GUI_TEXTURED, texture, x, y, 0.0f, 0.0f,
-                iconSize, iconSize, iconSize, iconSize);
+        graphics.blit(
+                RenderPipelines.GUI_TEXTURED,
+                MICROPHONE,
+                x,
+                y,
+                0.0f,
+                0.0f,
+                iconSize,
+                iconSize,
+                iconSize,
+                iconSize,
+                tint
+        );
+    }
+
+    private static int tintedBackground(int argb) {
+        int red = (argb >>> 16) & 0xff;
+        int green = (argb >>> 8) & 0xff;
+        int blue = argb & 0xff;
+
+        // A dark, translucent version of the player's own presentation color.
+        red = Math.round(red * 0.18f);
+        green = Math.round(green * 0.18f);
+        blue = Math.round(blue * 0.18f);
+
+        return 0xB8000000 | (red << 16) | (green << 8) | blue;
     }
 
     private static void drawMiniMeter(
