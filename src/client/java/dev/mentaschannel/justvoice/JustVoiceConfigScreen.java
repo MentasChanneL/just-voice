@@ -14,9 +14,14 @@ import org.lwjgl.system.MemoryUtil;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /** Main audio settings screen exposed through Mod Menu and /justvoice settings. */
 public final class JustVoiceConfigScreen extends Screen {
@@ -186,6 +191,114 @@ public final class JustVoiceConfigScreen extends Screen {
 
     private void chooseCustomIcon() {
         Minecraft client = Minecraft.getInstance();
+        if (System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("linux")) {
+            chooseLinuxCustomIcon(client);
+            return;
+        }
+
+        chooseSdlCustomIcon(client);
+    }
+
+    /**
+     * Minecraft uses GLFW for its event loop, while SDL's Linux file dialogs
+     * may depend on SDL_PumpEvents for the XDG portal response. Prefer the
+     * desktop's native chooser process on Linux, and provide an in-game path
+     * field when neither Zenity nor KDialog is installed.
+     */
+    private void chooseLinuxCustomIcon(Minecraft client) {
+        Thread.ofVirtual().name("just-voice-icon-picker").start(() -> {
+            try {
+                Path selected = showLinuxFileDialog();
+                if (selected != null) {
+                    client.execute(() -> importCustomIcon(selected));
+                }
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            } catch (IOException exception) {
+                System.getLogger("justvoice").log(System.Logger.Level.WARNING,
+                        "Linux file picker unavailable: " + exception.getMessage()
+                                + ". Falling back to manual PNG path entry.");
+                client.execute(() -> client.gui.setScreen(
+                        new JustVoiceIconPathScreen(this, this::importCustomIcon)
+                ));
+            }
+        });
+    }
+
+    private static Path showLinuxFileDialog() throws IOException, InterruptedException {
+        String zenity = findExecutableOnPath("zenity");
+        if (zenity != null) {
+            return runLinuxFileDialog(
+                    List.of(
+                            zenity,
+                            "--file-selection",
+                            "--title=Choose a custom microphone icon",
+                            "--file-filter=PNG images | *.png",
+                            "--filename=" + System.getProperty("user.home", ".") + File.separator
+                    )
+            );
+        }
+
+        String kdialog = findExecutableOnPath("kdialog");
+        if (kdialog != null) {
+            return runLinuxFileDialog(List.of(
+                    kdialog,
+                    "--getopenfilename",
+                    System.getProperty("user.home", "."),
+                    "PNG images (*.png)"
+            ));
+        }
+
+        throw new IOException("Install zenity or kdialog, or enter the PNG path manually");
+    }
+
+    private static Path runLinuxFileDialog(List<String> command) throws IOException, InterruptedException {
+        Process process = new ProcessBuilder(command)
+                .redirectErrorStream(true)
+                .start();
+        byte[] response = process.getInputStream().readAllBytes();
+        int exitCode = process.waitFor();
+
+        String detail = new String(response, StandardCharsets.UTF_8).trim();
+        if (exitCode == 1 && detail.isBlank()) {
+            return null; // The user cancelled the chooser.
+        }
+        if (exitCode != 0) {
+            throw new IOException(detail.isBlank()
+                    ? "File chooser exited with code " + exitCode
+                    : detail);
+        }
+
+        String selected = new String(response, StandardCharsets.UTF_8).trim();
+        if (selected.isEmpty()) {
+            throw new IOException("File chooser returned an empty path");
+        }
+        return Path.of(selected);
+    }
+
+    private static String findExecutableOnPath(String executable) {
+        String pathValue = System.getenv("PATH");
+        if (pathValue == null || pathValue.isBlank()) {
+            return null;
+        }
+
+        for (String directory : pathValue.split(java.util.regex.Pattern.quote(File.pathSeparator))) {
+            try {
+                Path candidate = Path.of(directory.isBlank() ? "." : directory)
+                        .resolve(executable)
+                        .toAbsolutePath()
+                        .normalize();
+                if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) {
+                    return candidate.toString();
+                }
+            } catch (RuntimeException ignored) {
+                // Ignore malformed PATH entries and keep searching.
+            }
+        }
+        return null;
+    }
+
+    private void chooseSdlCustomIcon(Minecraft client) {
         SDL_DialogFileFilter.Buffer filters = SDL_DialogFileFilter.malloc(1);
         var filterName = MemoryUtil.memUTF8("PNG images");
         var filterPattern = MemoryUtil.memUTF8("*.png");
@@ -196,6 +309,7 @@ public final class JustVoiceConfigScreen extends Screen {
                     (userdata, filelist, filter) -> {
                         try {
                             if (filelist == 0L) {
+                                client.execute(() -> JustVoiceChat.error("screen.justvoice.icon_import_failed"));
                                 return;
                             }
 

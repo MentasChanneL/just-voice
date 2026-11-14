@@ -28,7 +28,7 @@ Example server command:
 - Connection, disconnection, and error notices are sent to Minecraft chat and localized in the mod language files; the action bar is not used for status messages.
 - A supplied microphone icon is shown beside the hotbar while connected: muted/idle when V is released, active while push-to-talk is held.
 - Use the client command `/justvoice on|off` to enable/disable voice while keeping the current invite token in memory; `/justvoice list` shows current room members.
-- The config screen selects microphone/output devices, input gain, master voice volume, per-player volume, and one of four bundled microphone icons. You can import a custom PNG; it is stored in `config/just-voice/mic-icons/custom.png`.
+- The config screen selects microphone/output devices, input gain, master voice volume, per-player volume, and one of four bundled microphone icons. You can import a custom PNG; it is stored in `config/just-voice/mic-icons/custom.png`. On Linux, Just Voice uses Zenity or KDialog when available and falls back to an in-game path field.
 - The bottom-right speaker panel shows up to five participants whose decoded audio contains audible signal. It includes the local player while their microphone is sending audible voice frames, with a live input meter on the local row.
 - Speaker entries use the player's server-provided name and RGB presentation color. Rows fade out smoothly after speech stops.
 - A color-matched `MIC` marker is rendered above active speakers. It is hidden above the local avatar in first person and shown in third person.

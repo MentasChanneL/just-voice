@@ -58,5 +58,10 @@
   "screen.justvoice.mic_icon.v4": "Microphone style 4",
   "screen.justvoice.mic_icon.custom": "Custom icon — click to replace",
   "screen.justvoice.mic_icon.upload": "Click to choose a PNG",
-  "screen.justvoice.mic_icon.replace": "Custom icon selected — click again to replace"
+  "screen.justvoice.mic_icon.replace": "Custom icon selected — click again to replace",
+  "screen.justvoice.icon_path.title": "Import custom icon",
+  "screen.justvoice.icon_path.description": "Paste the full path to a PNG file",
+  "screen.justvoice.icon_path.label": "PNG file path",
+  "screen.justvoice.icon_path.hint": "/home/user/Downloads/microphone.png",
+  "screen.justvoice.icon_path.import": "Import"
 }
