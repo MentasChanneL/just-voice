@@ -92,9 +92,8 @@ public final class JustVoiceClient implements ClientModInitializer {
                 return;
             }
 
-            client.player.displayClientMessage(
-                    Component.translatable(notice.translationKey()).withStyle(notice.color()),
-                    false
+            client.gui.hud.getChat().addClientSystemMessage(
+                    Component.translatable(notice.translationKey()).withStyle(notice.color())
             );
         });
     }
