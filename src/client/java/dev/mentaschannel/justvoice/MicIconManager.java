@@ -10,11 +10,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
 
-/** Loads bundled or user-provided microphone textures for the HUD. */
+/** Loads bundled or user-provided microphone textures for the HUD and settings preview. */
 public final class MicIconManager {
     private static final Identifier CUSTOM_TEXTURE = Identifier.fromNamespaceAndPath(
             JustVoiceClient.MOD_ID,
@@ -26,54 +24,63 @@ public final class MicIconManager {
     private static volatile Identifier currentTexture = builtinTexture("v2");
     private static volatile int currentWidth = 16;
     private static volatile int currentHeight = 16;
+    private static volatile boolean customAvailable;
+    private static volatile int customWidth = 16;
+    private static volatile int customHeight = 16;
 
     private MicIconManager() {
     }
 
     public static void reload(VoiceSettings settings) {
-        String selection = settings.microphoneIcon();
-        if ("custom".equals(selection)) {
-            try {
-                byte[] bytes = readCustomIcon(settings.customMicrophoneIconFile());
-                NativeImage image = NativeImage.read(bytes);
-                int width = image.getWidth();
-                int height = image.getHeight();
-                if (!validDimensions(width, height)) {
-                    image.close();
-                    throw new IOException("Custom microphone icon dimensions must be between 1 and 512 pixels.");
-                }
+        loadCustomTexture(settings);
 
-                Minecraft.getInstance().getTextureManager().register(
-                        CUSTOM_TEXTURE,
-                        new DynamicTexture(() -> "Just Voice custom microphone icon", image)
-                );
-                currentTexture = CUSTOM_TEXTURE;
-                currentWidth = width;
-                currentHeight = height;
-                return;
-            } catch (IOException | RuntimeException exception) {
-                System.getLogger("justvoice").log(System.Logger.Level.WARNING,
-                        "Could not load custom microphone icon: " + exception.getMessage());
-                settings.setMicrophoneIcon("v2");
-                selection = "v2";
-            }
+        String selection = settings.microphoneIcon();
+        if ("custom".equals(selection) && !customAvailable) {
+            settings.setMicrophoneIcon("v2");
+            selection = "v2";
         }
 
-        currentTexture = builtinTexture(selection);
-        currentWidth = 16;
-        currentHeight = 16;
+        currentTexture = previewTexture(selection);
+        currentWidth = previewWidth(selection);
+        currentHeight = previewHeight(selection);
     }
 
-    public static void cycle(VoiceSettings settings) {
-        List<String> choices = new ArrayList<>(List.of("v1", "v2", "v3", "v4"));
-        if (Files.isRegularFile(settings.customMicrophoneIconFile())) {
-            choices.add("custom");
+    private static void loadCustomTexture(VoiceSettings settings) {
+        Path file = settings.customMicrophoneIconFile();
+        if (!Files.isRegularFile(file)) {
+            customAvailable = false;
+            return;
         }
 
-        String selected = settings.microphoneIcon();
-        int index = choices.indexOf(selected);
-        String next = choices.get((index + 1 + choices.size()) % choices.size());
-        settings.setMicrophoneIcon(next);
+        try {
+            byte[] bytes = readCustomIcon(file);
+            NativeImage image = NativeImage.read(bytes);
+            int width = image.getWidth();
+            int height = image.getHeight();
+            if (!validDimensions(width, height)) {
+                image.close();
+                throw new IOException("Custom microphone icon dimensions must be between 1 and 512 pixels.");
+            }
+
+            Minecraft.getInstance().getTextureManager().register(
+                    CUSTOM_TEXTURE,
+                    new DynamicTexture(() -> "Just Voice custom microphone icon", image)
+            );
+            customWidth = width;
+            customHeight = height;
+            customAvailable = true;
+        } catch (IOException | RuntimeException exception) {
+            customAvailable = false;
+            System.getLogger("justvoice").log(System.Logger.Level.WARNING,
+                    "Could not load custom microphone icon: " + exception.getMessage());
+        }
+    }
+
+    public static void select(String selection, VoiceSettings settings) {
+        if ("custom".equals(selection) && !customAvailable) {
+            return;
+        }
+        settings.setMicrophoneIcon(selection);
         reload(settings);
     }
 
@@ -117,9 +124,20 @@ public final class MicIconManager {
         return currentHeight;
     }
 
-    public static String displayName(VoiceSettings settings) {
-        String selection = settings.microphoneIcon();
-        return "custom".equals(selection) ? "Custom" : selection.toUpperCase(Locale.ROOT);
+    public static boolean hasCustomIcon() {
+        return customAvailable;
+    }
+
+    public static Identifier previewTexture(String selection) {
+        return "custom".equals(selection) ? CUSTOM_TEXTURE : builtinTexture(selection);
+    }
+
+    public static int previewWidth(String selection) {
+        return "custom".equals(selection) ? customWidth : 16;
+    }
+
+    public static int previewHeight(String selection) {
+        return "custom".equals(selection) ? customHeight : 16;
     }
 
     private static byte[] readCustomIcon(Path path) throws IOException {
