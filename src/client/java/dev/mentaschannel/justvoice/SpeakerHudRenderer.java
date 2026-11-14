@@ -1,6 +1,6 @@
 package dev.mentaschannel.justvoice;
 
-import com.mojang.blaze3d.pipeline.RenderPipelines;
+import net.minecraft.client.renderer.RenderPipelines;
 import dev.mentaschannel.justvoice.voice.VoiceSessionManager;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
