@@ -10,7 +10,6 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -34,14 +33,13 @@ public final class VoiceSettings {
     private float masterVolume = 1.0f;
     private String microphoneIcon = "v2";
 
-    private VoiceSettings(Path configDirectory, Path file) {
+    private VoiceSettings(Path configDirectory) {
         this.configDirectory = configDirectory;
-        this.file = file;
+        this.file = configDirectory.resolve(FILE_NAME);
     }
 
     public static VoiceSettings load(Path configDirectory) {
-        Path settingsFile = migrateLegacyFile(configDirectory);
-        VoiceSettings settings = new VoiceSettings(configDirectory, settingsFile);
+        VoiceSettings settings = new VoiceSettings(configDirectory);
         try {
             Files.createDirectories(configDirectory);
             if (Files.isRegularFile(settings.file)) {
@@ -61,37 +59,6 @@ public final class VoiceSettings {
         settings.masterVolume = parseFloat(settings.properties.getProperty("master-volume"), 1.0f, 0.0f, 2.0f);
         settings.microphoneIcon = sanitizeMicrophoneIcon(settings.properties.getProperty("microphone-icon", "v2"));
         return settings;
-    }
-
-    private static Path migrateLegacyFile(Path configDirectory) {
-        Path target = configDirectory.resolve(FILE_NAME);
-        if (Files.exists(target)) {
-            return target;
-        }
-
-        Path parent = configDirectory.toAbsolutePath().normalize().getParent();
-        if (parent == null) {
-            return target;
-        }
-
-        Path legacy = parent.resolve(FILE_NAME);
-        if (!Files.isRegularFile(legacy)) {
-            return target;
-        }
-
-        try {
-            Files.createDirectories(configDirectory);
-            try {
-                Files.move(legacy, target, StandardCopyOption.REPLACE_EXISTING);
-            } catch (IOException moveException) {
-                Files.copy(legacy, target, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } catch (IOException exception) {
-            System.getLogger("justvoice").log(System.Logger.Level.WARNING,
-                    "Could not migrate the old audio configuration: " + exception.getMessage());
-            return legacy;
-        }
-        return target;
     }
 
     private static float parseFloat(String raw, float fallback, float minimum, float maximum) {
@@ -174,17 +141,7 @@ public final class VoiceSettings {
         }
 
         String key = playerVolumeKey(playerName);
-        String raw = properties.getProperty(key);
-        if (raw == null) {
-            String legacyKey = legacyPlayerVolumeKey(playerName);
-            raw = properties.getProperty(legacyKey);
-            if (raw != null) {
-                properties.setProperty(key, raw);
-                properties.remove(legacyKey);
-                save();
-            }
-        }
-        return parseFloat(raw, 1.0f, 0.0f, 2.0f);
+        return parseFloat(properties.getProperty(key), 1.0f, 0.0f, 2.0f);
     }
 
     public synchronized void setPlayerVolume(String playerName, float volume) {
@@ -221,10 +178,6 @@ public final class VoiceSettings {
 
     private static String playerMutedKey(String playerName) {
         return "player-muted." + encodePlayerName(playerName.toLowerCase(Locale.ROOT));
-    }
-
-    private static String legacyPlayerVolumeKey(String playerName) {
-        return "player-volume." + encodePlayerName(playerName);
     }
 
     private static String encodePlayerName(String playerName) {

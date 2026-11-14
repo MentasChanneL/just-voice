@@ -1,18 +1,20 @@
-package dev.mentaschannel.justvoice;
+package dev.mentaschannel.justvoice.client.gui;
 
+import dev.mentaschannel.justvoice.JustVoiceClient;
 import dev.mentaschannel.justvoice.voice.VoicePeerProfile;
 import dev.mentaschannel.justvoice.voice.VoiceSessionManager;
 import dev.mentaschannel.justvoice.voice.VoiceSettings;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+
 import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.components.PlayerFaceExtractor;
+import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.PlayerInfo;
-import net.minecraft.client.resources.DefaultPlayerSkin;
 import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.resources.DefaultPlayerSkin;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.PlayerSkin;
@@ -44,11 +46,7 @@ public final class JustVoicePlayersScreen extends Screen {
     private final List<MuteControl> muteControls = new ArrayList<>();
     private int pageCount;
 
-    public JustVoicePlayersScreen(Screen parent) {
-        this(parent, 0);
-    }
-
-    private JustVoicePlayersScreen(Screen parent, int page) {
+    public JustVoicePlayersScreen(Screen parent, int page) {
         super(Component.translatable("screen.justvoice.players_title"));
         this.parent = parent;
         this.session = JustVoiceClient.getActiveSessionManager();

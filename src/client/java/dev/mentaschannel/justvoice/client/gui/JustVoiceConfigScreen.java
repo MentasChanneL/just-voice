@@ -1,18 +1,23 @@
-package dev.mentaschannel.justvoice;
+package dev.mentaschannel.justvoice.client.gui;
 
+import dev.mentaschannel.justvoice.client.assets.MicIconManager;
+import dev.mentaschannel.justvoice.JustVoiceChat;
+import dev.mentaschannel.justvoice.JustVoiceClient;
 import dev.mentaschannel.justvoice.voice.VoiceSettings;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+
 import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
-import org.lwjgl.sdl.SDLDialog;
-import org.lwjgl.sdl.SDL_DialogFileFilter;
-import org.lwjgl.system.MemoryUtil;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+
+import org.lwjgl.sdl.SDL_DialogFileFilter;
+import org.lwjgl.sdl.SDLDialog;
+import org.lwjgl.system.MemoryUtil;
 
 import java.io.File;
 import java.io.IOException;
@@ -167,7 +172,7 @@ public final class JustVoiceConfigScreen extends Screen {
 
         addRenderableWidget(Button.builder(
                         Component.translatable("screen.justvoice.manage_players"),
-                        button -> Minecraft.getInstance().gui.setScreen(new JustVoicePlayersScreen(this))
+                        button -> Minecraft.getInstance().gui.setScreen(new JustVoicePlayersScreen(this, 0))
                 )
                 .bounds(left, y, buttonWidth, 22).build());
         y += 30;

@@ -1,23 +1,31 @@
 package dev.mentaschannel.justvoice;
 
 import com.mojang.blaze3d.platform.InputConstants;
+
+import dev.mentaschannel.justvoice.client.assets.MicIconManager;
+import dev.mentaschannel.justvoice.client.gui.JustVoiceConfigScreen;
+import dev.mentaschannel.justvoice.client.gui.JustVoicePlayersScreen;
+import dev.mentaschannel.justvoice.client.render.SpeakerHudRenderer;
+import dev.mentaschannel.justvoice.client.render.VoiceOverheadRenderLayer;
 import dev.mentaschannel.justvoice.voice.VoiceClientConfig;
 import dev.mentaschannel.justvoice.voice.VoiceDirective;
 import dev.mentaschannel.justvoice.voice.VoicePeerProfile;
 import dev.mentaschannel.justvoice.voice.VoiceSessionManager;
 import dev.mentaschannel.justvoice.voice.VoiceSettings;
+
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.client.Minecraft;
-import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -136,7 +144,7 @@ public final class JustVoiceClient implements ClientModInitializer {
         Minecraft client = Minecraft.getInstance();
         client.execute(() -> {
             try {
-                client.gui.setScreen(new JustVoicePlayersScreen(client.gui.screen()));
+                client.gui.setScreen(new JustVoicePlayersScreen(client.gui.screen(), 0));
                 JustVoiceChat.info("command.justvoice.manage_opened");
             } catch (RuntimeException exception) {
                 LOGGER.error("Could not open Just Voice participant screen.", exception);

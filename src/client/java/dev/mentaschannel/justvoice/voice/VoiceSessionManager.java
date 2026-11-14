@@ -390,22 +390,6 @@ public final class VoiceSessionManager {
         }
     }
 
-    public void setPlayerVolume(String playerName, float volume) {
-        settings.setPlayerVolume(playerName, volume);
-    }
-
-    public float getPlayerVolume(String playerName) {
-        return settings.playerVolume(playerName);
-    }
-
-    public void setPlayerMuted(String playerName, boolean muted) {
-        settings.setPlayerMuted(playerName, muted);
-    }
-
-    public boolean isPlayerMuted(String playerName) {
-        return settings.isPlayerMuted(playerName);
-    }
-
     public synchronized void restartPlayback() {
         if (!isConnected()) {
             return;
@@ -419,14 +403,6 @@ public final class VoiceSessionManager {
         stopMicrophone();
         microphoneUnavailable = false;
         updateMicrophone();
-    }
-
-    public float getMicrophoneLevel() {
-        return microphoneLevel;
-    }
-
-    public boolean isPushToTalkDown() {
-        return pushToTalkDown;
     }
 
     public boolean isConnected() {
@@ -445,8 +421,8 @@ public final class VoiceSessionManager {
     }
 
     /**
-     * Toggle the local voice feature. Disabling closes transport and audio,
-     * but deliberately retains the latest invitation token in memory.
+     * Toggle local audio without leaving the room. Keeping QUIC membership alive
+     * prevents other clients from receiving duplicate participant join/leave events.
      */
     public synchronized void setEnabled(boolean enabled) {
         if (settings.isEnabled() == enabled) {

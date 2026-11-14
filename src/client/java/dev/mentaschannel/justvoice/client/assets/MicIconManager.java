@@ -1,7 +1,10 @@
-package dev.mentaschannel.justvoice;
+package dev.mentaschannel.justvoice.client.assets;
 
 import com.mojang.blaze3d.platform.NativeImage;
+
+import dev.mentaschannel.justvoice.JustVoiceClient;
 import dev.mentaschannel.justvoice.voice.VoiceSettings;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.Identifier;

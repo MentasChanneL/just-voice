@@ -17,7 +17,7 @@
       "dev.mentaschannel.justvoice.JustVoiceClient"
     ],
     "modmenu": [
-      "dev.mentaschannel.justvoice.ModMenuIntegration"
+      "dev.mentaschannel.justvoice.client.gui.ModMenuIntegration"
     ]
   },
   "depends": {

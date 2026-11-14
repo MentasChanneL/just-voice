@@ -1,13 +1,16 @@
-package dev.mentaschannel.justvoice;
+package dev.mentaschannel.justvoice.client.render;
 
+import dev.mentaschannel.justvoice.client.assets.MicIconManager;
+import dev.mentaschannel.justvoice.JustVoiceClient;
 import dev.mentaschannel.justvoice.voice.VoiceSessionManager;
+
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.minecraft.client.AttackIndicatorStatus;
 import net.minecraft.client.DeltaTracker;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.PlayerFaceExtractor;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.resources.DefaultPlayerSkin;
