@@ -7,6 +7,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.components.PlayerFaceExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.PlayerInfo;
@@ -16,22 +17,31 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.PlayerSkin;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /** Per-player volume and mute controls. Preferences are persisted by case-insensitive nickname. */
 public final class JustVoicePlayersScreen extends Screen {
     private static final int ROWS_PER_PAGE = 5;
-    private static final int ROW_HEIGHT = 38;
-    private static final Identifier PLACEHOLDER = Identifier.fromNamespaceAndPath(
+    private static final int ROW_HEIGHT = 34;
+    private static final Identifier HAS_MUTE = Identifier.fromNamespaceAndPath(
             JustVoiceClient.MOD_ID,
-            "textures/gui/sprites/mics/v2.png"
+            "textures/gui/sprites/has_mute.png"
     );
+    private static final Identifier CAN_TALK = Identifier.fromNamespaceAndPath(
+            JustVoiceClient.MOD_ID,
+            "textures/gui/sprites/can_talk.png"
+    );
+
+    private record MuteControl(String playerName, int x, int y) {
+    }
 
     private final Screen parent;
     private final VoiceSessionManager session;
     private final VoiceSettings settings;
     private final int page;
     private List<VoicePeerProfile> players = List.of();
+    private final List<MuteControl> muteControls = new ArrayList<>();
     private int pageCount;
 
     public JustVoicePlayersScreen(Screen parent) {
@@ -48,6 +58,7 @@ public final class JustVoicePlayersScreen extends Screen {
 
     @Override
     protected void init() {
+        muteControls.clear();
         if (session != null) {
             session.requestRoster();
             players = session.getRemoteRoomMembers();
@@ -57,7 +68,7 @@ public final class JustVoicePlayersScreen extends Screen {
         pageCount = Math.max(1, (players.size() + ROWS_PER_PAGE - 1) / ROWS_PER_PAGE);
         int safePage = Math.min(page, pageCount - 1);
 
-        int panelWidth = Math.min(480, width - 24);
+        int panelWidth = Math.min(400, width - 24);
         int left = (width - panelWidth) / 2;
         int top = 58;
         int first = safePage * ROWS_PER_PAGE;
@@ -67,19 +78,23 @@ public final class JustVoicePlayersScreen extends Screen {
             VoicePeerProfile profile = players.get(index);
             int row = index - first;
             int y = top + row * ROW_HEIGHT;
-            int sliderX = left + 145;
-            int muteX = left + panelWidth - 83;
+            int sliderX = left + 112;
+            int muteX = left + panelWidth - 28;
             int sliderWidth = Math.max(90, muteX - sliderX - 8);
             String playerName = profile.name();
 
-            addRenderableWidget(new AbstractSliderButton(
+            AbstractSliderButton volumeSlider = new AbstractSliderButton(
                     sliderX,
-                    y + 8,
+                    y + 7,
                     sliderWidth,
                     20,
                     Component.empty(),
                     settings.playerVolume(playerName) / 2.0
             ) {
+                {
+                    updateMessage();
+                }
+
                 @Override
                 protected void updateMessage() {
                     setMessage(Component.translatable(
@@ -93,15 +108,25 @@ public final class JustVoicePlayersScreen extends Screen {
                     settings.setPlayerVolume(playerName, (float) value * 2.0f);
                     updateMessage();
                 }
-            });
+            };
+            volumeSlider.active = true;
+            volumeSlider.setAlpha(1.0f);
+            addRenderableWidget(volumeSlider);
 
-            Button muteButton = addRenderableWidget(Button.builder(
-                    muteLabel(playerName),
+            Button muteButton = Button.builder(
+                    Component.empty(),
                     button -> {
                         settings.setPlayerMuted(playerName, !settings.isPlayerMuted(playerName));
-                        button.setMessage(muteLabel(playerName));
+                        button.setTooltip(Tooltip.create(muteTooltip(playerName)));
                     }
-            ).bounds(muteX, y + 8, 78, 20).build());
+            )
+                    .bounds(muteX, y + 7, 24, 20)
+                    .tooltip(Tooltip.create(muteTooltip(playerName)))
+                    .build();
+            muteButton.active = true;
+            muteButton.setAlpha(1.0f);
+            addRenderableWidget(muteButton);
+            muteControls.add(new MuteControl(playerName, muteX, y + 7));
         }
 
         int controlsY = top + ROWS_PER_PAGE * ROW_HEIGHT + 6;
@@ -129,11 +154,11 @@ public final class JustVoicePlayersScreen extends Screen {
                 .bounds(width / 2 - 100, height - 28, 200, 20).build());
     }
 
-    private Component muteLabel(String playerName) {
+    private Component muteTooltip(String playerName) {
         return Component.translatable(
                 settings.isPlayerMuted(playerName)
-                        ? "screen.justvoice.unmute"
-                        : "screen.justvoice.mute"
+                        ? "screen.justvoice.unmute_tooltip"
+                        : "screen.justvoice.mute_tooltip"
         );
     }
 
@@ -158,7 +183,7 @@ public final class JustVoicePlayersScreen extends Screen {
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
         graphics.centeredText(font, title, width / 2, 22, 0xFFFFFFFF);
 
-        int panelWidth = Math.min(480, width - 24);
+        int panelWidth = Math.min(400, width - 24);
         int left = (width - panelWidth) / 2;
         int top = 58;
         int first = Math.min(page, Math.max(0, pageCount - 1)) * ROWS_PER_PAGE;
@@ -193,12 +218,28 @@ public final class JustVoicePlayersScreen extends Screen {
                     graphics,
                     resolvePlayerSkin(profile.name()),
                     left + 6,
-                    y + 9,
-                    20,
+                    y + 8,
+                    18,
                     0xFFFFFFFF
             );
-            String name = font.plainSubstrByWidth(profile.name(), 104);
-            graphics.text(font, name, left + 33, y + 14, color, true);
+            String name = font.plainSubstrByWidth(profile.name(), 72);
+            graphics.text(font, name, left + 30, y + 12, color, true);
+        }
+
+        for (MuteControl control : muteControls) {
+            Identifier icon = settings.isPlayerMuted(control.playerName()) ? HAS_MUTE : CAN_TALK;
+            graphics.blit(
+                    RenderPipelines.GUI_TEXTURED,
+                    icon,
+                    control.x() + 4,
+                    control.y() + 2,
+                    0.0f,
+                    0.0f,
+                    16,
+                    16,
+                    16,
+                    16
+            );
         }
 
         graphics.centeredText(

@@ -13,7 +13,6 @@ import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.minecraft.client.KeyMapping;
@@ -42,7 +41,7 @@ public final class JustVoiceClient implements ClientModInitializer {
     public void onInitializeClient() {
         VoiceClientConfig config = VoiceClientConfig.load(FabricLoader.getInstance().getConfigDir());
         voiceSettings = VoiceSettings.load(FabricLoader.getInstance().getConfigDir());
-        sessionManager = new VoiceSessionManager(config, voiceSettings, JustVoiceClient::showChatNotice);
+        sessionManager = new VoiceSessionManager(config, voiceSettings);
         activeSessionManager = sessionManager;
         SpeakerHudRenderer.register();
         VoiceOverheadRenderLayer.register();
@@ -103,11 +102,11 @@ public final class JustVoiceClient implements ClientModInitializer {
                             return 1;
                         }))
                         .then(ClientCommands.literal("list").executes(context -> {
-                            showRoomRoster(component -> Minecraft.getInstance().gui.hud.getChat().addClientSystemMessage(component));
+                            showRoomRoster();
                             return 1;
                         }))
                         .then(ClientCommands.literal("players").executes(context -> {
-                            showRoomRoster(component -> Minecraft.getInstance().gui.hud.getChat().addClientSystemMessage(component));
+                            showRoomRoster();
                             return 1;
                         }))
                         .then(ClientCommands.literal("settings").executes(context -> {
@@ -124,21 +123,18 @@ public final class JustVoiceClient implements ClientModInitializer {
         );
     }
 
-    private void showRoomRoster(java.util.function.Consumer<Component> output) {
+    private void showRoomRoster() {
         if (!sessionManager.isConnected()) {
-            output.accept(Component.translatable("command.justvoice.not_connected")
-                    .withStyle(ChatFormatting.RED));
+            JustVoiceChat.error("command.justvoice.not_connected");
             return;
         }
 
         sessionManager.requestRoster();
         List<VoicePeerProfile> members = sessionManager.getRoomMembers();
-        output.accept(Component.translatable("command.justvoice.roster_header", members.size())
-                .withStyle(ChatFormatting.GRAY));
+        JustVoiceChat.info("command.justvoice.roster_header", members.size());
 
         if (members.isEmpty()) {
-            output.accept(Component.translatable("command.justvoice.roster_empty")
-                    .withStyle(ChatFormatting.GRAY));
+            JustVoiceChat.warn("command.justvoice.roster_empty");
             return;
         }
 
@@ -147,8 +143,7 @@ public final class JustVoiceClient implements ClientModInitializer {
             if (sessionManager.isSelfPeer(member.peerId())) {
                 label += " (you)";
             }
-            output.accept(Component.literal("• " + label)
-                    .withStyle(style -> style.withColor(member.rgbColor())));
+            JustVoiceChat.info("command.justvoice.roster_member", label);
         }
     }
 
@@ -158,14 +153,6 @@ public final class JustVoiceClient implements ClientModInitializer {
 
     public static VoiceSettings getVoiceSettings() {
         return voiceSettings;
-    }
-
-    private static void showChatNotice(VoiceSessionManager.ChatNotice notice) {
-        Minecraft client = Minecraft.getInstance();
-        client.execute(() -> client.gui.hud.getChat().addClientSystemMessage(
-                Component.translatable(notice.translationKey(), notice.arguments())
-                        .withStyle(notice.color())
-        ));
     }
 
     /**

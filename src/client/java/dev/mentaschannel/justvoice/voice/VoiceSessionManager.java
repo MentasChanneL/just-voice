@@ -1,6 +1,5 @@
 package dev.mentaschannel.justvoice.voice;
 
-import net.minecraft.ChatFormatting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,7 +11,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
 
 /**
  * Owns the client's temporary voice session, room roster and PTT capture.
@@ -25,9 +23,6 @@ public final class VoiceSessionManager {
     private static final long SPEAKER_VISIBLE_NANOS = SPEAKER_FADE_START_NANOS + SPEAKER_FADE_DURATION_NANOS;
     private static final long ROSTER_REFRESH_NANOS = TimeUnit.SECONDS.toNanos(5);
     private static final int MAX_VISIBLE_SPEAKERS = 5;
-
-    public record ChatNotice(String translationKey, ChatFormatting color, Object[] arguments) {
-    }
 
     public record SpeakerHudEntry(
             long peerId,
@@ -49,7 +44,6 @@ public final class VoiceSessionManager {
 
     private final VoiceClientConfig config;
     private final VoiceSettings settings;
-    private final Consumer<ChatNotice> chatNotifier;
     private final AtomicReference<QuicVoiceClient> connection = new AtomicReference<>();
     private final ConcurrentHashMap<Long, VoicePeerProfile> peerProfiles = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Long> lastVoiceAtNanos = new ConcurrentHashMap<>();
@@ -65,12 +59,10 @@ public final class VoiceSessionManager {
 
     public VoiceSessionManager(
             VoiceClientConfig config,
-            VoiceSettings settings,
-            Consumer<ChatNotice> chatNotifier
+            VoiceSettings settings
     ) {
         this.config = config;
         this.settings = settings;
-        this.chatNotifier = chatNotifier;
     }
 
     /**
@@ -80,12 +72,12 @@ public final class VoiceSessionManager {
     public synchronized void invite(String token) {
         pendingToken = token;
         if (!settings.isEnabled()) {
-            notifyChat("message.justvoice.token_saved_disabled", ChatFormatting.GRAY);
+            JustVoiceChat.warn("message.justvoice.token_saved_disabled");
             return;
         }
         if (!config.isConfigured()) {
             LOGGER.warn("Cannot accept Just Voice invitation: voice-host is not configured.");
-            notifyChat("message.justvoice.server_not_configured", ChatFormatting.RED);
+            JustVoiceChat.error("message.justvoice.server_not_configured");
             return;
         }
 
@@ -100,7 +92,7 @@ public final class VoiceSessionManager {
         } catch (IllegalArgumentException exception) {
             pendingToken = null;
             LOGGER.warn("Ignored invalid Just Voice invitation token.");
-            notifyChat("message.justvoice.invalid_invitation", ChatFormatting.RED);
+            JustVoiceChat.error("message.justvoice.invalid_invitation");
             return;
         }
         connectWithCredentials(credentials);
@@ -146,7 +138,7 @@ public final class VoiceSessionManager {
                 playback = createPlayback();
                 playback.start();
                 LOGGER.info("Just Voice session is ready. Hold V to talk.");
-                notifyChat("message.justvoice.connected", ChatFormatting.GREEN);
+                JustVoiceChat.info("message.justvoice.connected");
                 lastRosterRequestNanos = System.nanoTime();
                 updateMicrophone();
             }
@@ -157,7 +149,7 @@ public final class VoiceSessionManager {
                     peerProfiles.clear();
                     lastVoiceAtNanos.clear();
                     LOGGER.warn("Could not connect to Just Voice server: {}", exception.getMessage());
-                    notifyChat("message.justvoice.connection_failed", ChatFormatting.RED);
+                    JustVoiceChat.error("message.justvoice.connection_failed");
                 }
             }
             candidate.close();
@@ -188,7 +180,7 @@ public final class VoiceSessionManager {
         QuicVoiceClient current = connection.get();
         boolean isSelf = current != null && profile.peerId() == current.selfPeerId();
         if (previous == null && !isSelf) {
-            notifyChat("message.justvoice.peer_joined", ChatFormatting.YELLOW, profile.name());
+            JustVoiceChat.info("message.justvoice.peer_joined", profile.name());
         }
     }
 
@@ -222,7 +214,7 @@ public final class VoiceSessionManager {
             currentPlayback.removePeer(peerId);
         }
         if (removed != null) {
-            notifyChat("message.justvoice.peer_left", ChatFormatting.GRAY, removed.name());
+            JustVoiceChat.info("message.justvoice.peer_left", removed.name());
         }
     }
 
@@ -237,7 +229,7 @@ public final class VoiceSessionManager {
         connection.set(null);
         peerProfiles.clear();
         lastVoiceAtNanos.clear();
-        notifyChat(transportChatKey(sanitized), ChatFormatting.RED);
+        JustVoiceChat.error(transportChatKey(sanitized));
     }
 
     private synchronized void handleMicrophoneError(long expectedGeneration, String message) {
@@ -247,7 +239,7 @@ public final class VoiceSessionManager {
         microphoneUnavailable = true;
         LOGGER.warn("Just Voice microphone unavailable: {}", sanitizeServerMessage(message));
         stopMicrophone();
-        notifyChat("message.justvoice.microphone_unavailable", ChatFormatting.RED);
+        JustVoiceChat.error("message.justvoice.microphone_unavailable");
     }
 
     private void sendMicrophoneFrame(byte[] frame) {
@@ -452,9 +444,8 @@ public final class VoiceSessionManager {
             if (enabled && connection.get() == null && pendingToken != null && config.isConfigured()) {
                 connectPendingToken();
             } else {
-                notifyChat(
-                        enabled ? "message.justvoice.already_enabled" : "message.justvoice.already_disabled",
-                        ChatFormatting.GRAY
+                JustVoiceChat.warn(
+                        enabled ? "message.justvoice.already_enabled" : "message.justvoice.already_disabled"
                 );
             }
             return;
@@ -466,13 +457,13 @@ public final class VoiceSessionManager {
             pushToTalkDown = false;
             microphoneUnavailable = false;
             closeResources();
-            notifyChat("message.justvoice.voice_disabled", ChatFormatting.GRAY);
+            JustVoiceChat.info("message.justvoice.voice_disabled");
             return;
         }
 
-        notifyChat("message.justvoice.voice_enabled", ChatFormatting.GREEN);
+        JustVoiceChat.info("message.justvoice.voice_enabled");
         if (pendingToken == null) {
-            notifyChat("message.justvoice.waiting_for_invitation", ChatFormatting.GRAY);
+            JustVoiceChat.warn("message.justvoice.waiting_for_invitation");
             return;
         }
         connectPendingToken();
@@ -480,7 +471,7 @@ public final class VoiceSessionManager {
 
     private void connectPendingToken() {
         if (!config.isConfigured()) {
-            notifyChat("message.justvoice.server_not_configured", ChatFormatting.RED);
+            JustVoiceChat.error("message.justvoice.server_not_configured");
             return;
         }
         try {
@@ -492,7 +483,7 @@ public final class VoiceSessionManager {
             ));
         } catch (IllegalArgumentException exception) {
             pendingToken = null;
-            notifyChat("message.justvoice.invalid_invitation", ChatFormatting.RED);
+            JustVoiceChat.error("message.justvoice.invalid_invitation");
         }
     }
 
@@ -515,12 +506,8 @@ public final class VoiceSessionManager {
         microphoneLevel = 0.0f;
         closeResources();
         if (notifyPlayer && (hadSession || hadToken)) {
-            notifyChat("message.justvoice.disconnected", ChatFormatting.GRAY);
+            JustVoiceChat.info("message.justvoice.disconnected");
         }
-    }
-
-    private void notifyChat(String translationKey, ChatFormatting color, Object... arguments) {
-        chatNotifier.accept(new ChatNotice(translationKey, color, arguments));
     }
 
     private static String transportChatKey(String message) {

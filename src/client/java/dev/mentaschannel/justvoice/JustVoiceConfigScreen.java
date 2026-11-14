@@ -36,7 +36,17 @@ public final class JustVoiceConfigScreen extends Screen {
         int center = width / 2;
         int buttonWidth = Math.min(360, width - 32);
         int left = center - buttonWidth / 2;
-        int y = 64;
+        int y = 54;
+
+        addRenderableWidget(Button.builder(voiceEnabledLabel(), button -> {
+                    var session = JustVoiceClient.getActiveSessionManager();
+                    if (session != null) {
+                        session.setEnabled(!settings.isEnabled());
+                    }
+                    button.setMessage(voiceEnabledLabel());
+                })
+                .bounds(left, y, buttonWidth, 20).build());
+        y += 28;
 
         addRenderableWidget(Button.builder(inputDeviceLabel(), button -> cycleInputDevice())
                 .bounds(left, y, buttonWidth, 20).build());
@@ -51,6 +61,10 @@ public final class JustVoiceConfigScreen extends Screen {
                 Component.empty(),
                 normalizedInputGain()
         ) {
+            {
+                updateMessage();
+            }
+
             @Override
             protected void updateMessage() {
                 float gain = 0.5f + (float) value * 2.5f;
@@ -73,6 +87,10 @@ public final class JustVoiceConfigScreen extends Screen {
                 Component.empty(),
                 settings.masterVolume() / 2.0
         ) {
+            {
+                updateMessage();
+            }
+
             @Override
             protected void updateMessage() {
                 setMessage(Component.translatable(
@@ -103,6 +121,14 @@ public final class JustVoiceConfigScreen extends Screen {
     private static int selectedIndex(List<String> devices, String current) {
         int index = devices.indexOf(current == null ? "" : current);
         return index < 0 ? 0 : index;
+    }
+
+    private Component voiceEnabledLabel() {
+        return Component.translatable(
+                settings.isEnabled()
+                        ? "screen.justvoice.voice_enabled"
+                        : "screen.justvoice.voice_disabled"
+        );
     }
 
     private double normalizedInputGain() {
