@@ -115,6 +115,11 @@ public final class JustVoiceClient implements ClientModInitializer {
                             client.gui.setScreen(new JustVoiceConfigScreen(client.gui.screen()));
                             return 1;
                         }))
+                        .then(ClientCommands.literal("manage").executes(context -> {
+                            Minecraft client = Minecraft.getInstance();
+                            client.gui.setScreen(new JustVoicePlayersScreen(client.gui.screen()));
+                            return 1;
+                        }))
                 )
         );
     }

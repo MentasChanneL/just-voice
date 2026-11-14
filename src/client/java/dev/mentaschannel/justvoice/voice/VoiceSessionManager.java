@@ -405,6 +405,14 @@ public final class VoiceSessionManager {
         return settings.playerVolume(playerName);
     }
 
+    public void setPlayerMuted(String playerName, boolean muted) {
+        settings.setPlayerMuted(playerName, muted);
+    }
+
+    public boolean isPlayerMuted(String playerName) {
+        return settings.isPlayerMuted(playerName);
+    }
+
     public synchronized void restartPlayback() {
         if (!isConnected()) {
             return;

@@ -24,7 +24,7 @@ import java.util.function.LongFunction;
 
 /**
  * Decodes each remote speaker with an independent Opus decoder and mixes their
- * PCM frames into one output stream, with per-player and master volume controls.
+ * PCM frames into one output stream, with master volume and persistent per-player mute/volume.
  */
 public final class AudioPlayback implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger("justvoice");
@@ -110,8 +110,10 @@ public final class AudioPlayback implements AutoCloseable {
                     PeerDecoder state = entry.getValue();
                     DecodedFrame decoded = state.frames.pollFirst();
                     if (decoded != null) {
-                        double playerVolume = settings.playerVolume(peerNameResolver.apply(entry.getKey()));
-                        double volume = playerVolume * settings.masterVolume();
+                        String peerName = peerNameResolver.apply(entry.getKey());
+                        double volume = settings.isPlayerMuted(peerName)
+                                ? 0.0
+                                : settings.playerVolume(peerName) * settings.masterVolume();
                         if (volume > 0.0) {
                             hasAudio = true;
                             int count = Math.min(MIX_FRAME_SAMPLES, decoded.samples());

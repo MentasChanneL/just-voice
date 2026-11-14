@@ -11,9 +11,10 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Locale;
 import java.util.Properties;
 
-/** Persisted client-side audio and voice enablement settings. */
+/** Persisted client-side voice and audio preferences. Per-player preferences are global to this client profile. */
 public final class VoiceSettings {
     private static final String FILE_NAME = "just-voice-audio.properties";
     private static final float MIN_GAIN = 0.5f;
@@ -112,8 +113,20 @@ public final class VoiceSettings {
         if (playerName == null || playerName.isBlank()) {
             return 1.0f;
         }
+
         String key = playerVolumeKey(playerName);
-        return parseFloat(properties.getProperty(key), 1.0f, 0.0f, 2.0f);
+        String raw = properties.getProperty(key);
+        if (raw == null) {
+            // Migrate values saved by the earlier case-sensitive key scheme.
+            String legacyKey = legacyPlayerVolumeKey(playerName);
+            raw = properties.getProperty(legacyKey);
+            if (raw != null) {
+                properties.setProperty(key, raw);
+                properties.remove(legacyKey);
+                save();
+            }
+        }
+        return parseFloat(raw, 1.0f, 0.0f, 2.0f);
     }
 
     public synchronized void setPlayerVolume(String playerName, float volume) {
@@ -124,10 +137,41 @@ public final class VoiceSettings {
         save();
     }
 
+    public synchronized boolean isPlayerMuted(String playerName) {
+        if (playerName == null || playerName.isBlank()) {
+            return false;
+        }
+        return Boolean.parseBoolean(properties.getProperty(playerMutedKey(playerName), "false"));
+    }
+
+    public synchronized void setPlayerMuted(String playerName, boolean muted) {
+        if (playerName == null || playerName.isBlank()) {
+            return;
+        }
+        String key = playerMutedKey(playerName);
+        if (muted) {
+            properties.setProperty(key, "true");
+        } else {
+            properties.remove(key);
+        }
+        save();
+    }
+
     private static String playerVolumeKey(String playerName) {
-        String encoded = Base64.getUrlEncoder().withoutPadding()
+        return "player-volume." + encodePlayerName(playerName.toLowerCase(Locale.ROOT));
+    }
+
+    private static String playerMutedKey(String playerName) {
+        return "player-muted." + encodePlayerName(playerName.toLowerCase(Locale.ROOT));
+    }
+
+    private static String legacyPlayerVolumeKey(String playerName) {
+        return "player-volume." + encodePlayerName(playerName);
+    }
+
+    private static String encodePlayerName(String playerName) {
+        return Base64.getUrlEncoder().withoutPadding()
                 .encodeToString(playerName.getBytes(StandardCharsets.UTF_8));
-        return "player-volume." + encoded;
     }
 
     public static List<String> availableDevices() {
@@ -152,7 +196,7 @@ public final class VoiceSettings {
         try {
             Files.createDirectories(file.getParent());
             try (Writer writer = Files.newBufferedWriter(file)) {
-                properties.store(writer, "Just Voice client audio settings. Do not share this file.");
+                properties.store(writer, "Just Voice client audio settings. Player volume and mute preferences are keyed by nickname.");
             }
         } catch (IOException exception) {
             System.getLogger("justvoice").log(System.Logger.Level.WARNING,

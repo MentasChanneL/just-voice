@@ -185,18 +185,18 @@ public final class SpeakerHudRenderer {
         int iconSize = 16;
         int screenCenter = graphics.guiWidth() / 2;
         int hotbarRight = screenCenter + 91;
-        boolean attackIndicatorOnHotbar =
-                Minecraft.getInstance().options.attackIndicator().get() == AttackIndicatorStatus.HOTBAR;
+        AttackIndicatorStatus attackIndicator =
+                Minecraft.getInstance().options.attackIndicator().get();
+        boolean attackIndicatorOnHotbar = attackIndicator == AttackIndicatorStatus.HOTBAR;
 
         // Normally sit beside the hotbar. When Minecraft draws its attack
         // indicator there, move the mic icon one slot farther to the right.
-        int x = hotbarRight + (attackIndicatorOnHotbar ? 28 : 6);
+        int x = hotbarRight + (attackIndicatorOnHotbar ? 44 : 6);
         int y = graphics.guiHeight() - 38;
 
-        // Keep the icon inside the screen on narrow GUI scales.
-        if (x + iconSize > graphics.guiWidth() - 2) {
-            x = Math.max(2, hotbarRight - iconSize - 6);
-        }
+        // Keep the icon on the right side of the hotbar even at small GUI scales.
+        x = Math.min(x, graphics.guiWidth() - iconSize - 2);
+        x = Math.max(2, x);
         int tint = manager.isMicrophoneActive() ? 0xFFFFFFFF : 0x66FFFFFF;
 
         graphics.blit(
