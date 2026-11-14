@@ -1,44 +1,49 @@
 # Just Voice
 
-Client-only global voice chat mod for Minecraft Java Edition 26.3 (Fabric).
+Клиентский мод голосового чата для Minecraft Java Edition 26.3 (Fabric).
 
-The mod connects directly to the standalone **Just Voice Server** over QUIC. Each Minecraft world has one voice room. All connected participants in that world can hear each other regardless of distance or dimension.
+Мод напрямую подключается к отдельному серверу **Just Voice Server** по QUIC. Для каждого мира Minecraft создаётся одна голосовая комната. Все подключённые к этому миру игроки слышат друг друга независимо от расстояния и измерения.
 
-## Player-facing behaviour
+## Как работает мод
 
-The mod accepts voice directives only from server-sent **action-bar packets** (not player-authored chat). It intercepts the dedicated `/title actionbar` packet before vanilla renders it; overlay-flagged system-chat messages are also supported as a fallback.
+Мод принимает голосовые команды только из серверных пакетов action bar (строки над панелью быстрого доступа), а не из обычного чата игроков. Он перехватывает специальный пакет `/title actionbar` до его отображения Minecraft. В качестве запасного варианта поддерживаются системные сообщения чата с флагом overlay.
 
-- `@VOICE INVITE <token>` — replace the current voice session and connect to the configured voice server.
-- `@VOICE CLOSE` — immediately stop capture/playback and close the voice connection.
+- `@VOICE INVITE <token>` — заменяет текущую голосовую сессию и подключается к настроенному голосовому серверу.
+- `@VOICE CLOSE` — немедленно останавливает запись и воспроизведение звука, а также закрывает голосовое соединение.
 
-The server may prepend any number of ordinary spaces before `@VOICE`. The client strips leading whitespace before parsing, so the padding length is not fixed. A recognized directive is canceled before Minecraft displays it. A marker delivered as a normal chat message is discarded but never executed.
+Перед `@VOICE` сервер может добавить любое количество обычных пробелов. Клиент удаляет пробелы в начале строки перед разбором команды, поэтому фиксированная длина отступа не требуется. Распознанная команда скрывается и не отображается в Minecraft. Маркер, отправленный обычным сообщением чата, отбрасывается и никогда не выполняется.
 
-Example server command:
+Пример команды на стороне сервера:
 
 ```mcfunction
 /title PlayerName actionbar {"text":"                         @VOICE INVITE <token>"}
 ```
 
-**Security note:** moving a token off-screen is visual concealment, not encryption or access control. The token is still present in the packet delivered to that client and can be inspected by a modified client or packet/debug tooling. Keep tokens short-lived and player-specific; revoke them on disconnect or room teardown. The mod never prints or stores the token in logs or files.
+**Важно о безопасности:** скрытие токена за пределами экрана — это только визуальная маскировка, а не шифрование или контроль доступа. Токен всё равно содержится в пакете, доставляемом клиенту, и может быть извлечён модифицированным клиентом или инструментами анализа пакетов. Используйте короткоживущие персональные токены и отзывайте их при отключении игрока или удалении комнаты. Мод не выводит токен в журналы и не сохраняет его в файлы.
 
-## Voice controls and HUD
+## Управление голосом и HUD
 
-- Hold **V** to talk (rebindable under Options → Controls).
-- The microphone is opened only while push-to-talk is held and a voice session is connected.
-- Connection, disconnection, participant join/leave, automatic reconnect, and error notices are sent to Minecraft chat and localized in the mod language files; the action bar is reserved for private server directives.
-- A supplied microphone icon is shown beside the hotbar while connected: muted/idle when V is released, active while push-to-talk is held.
-- Use /justvoice on and /justvoice off to enable or locally mute voice. OFF stops microphone capture and incoming playback but keeps the room connection alive, so other players do not see repeated join/leave events. Use /justvoice reconnect to force a reconnect or let automatic reconnect recover from a temporary voice-server/network outage with exponential backoff. Use /justvoice settings for audio settings, /justvoice players for per-player volume and mute controls, and /justvoice list to print the current room roster.
-- The config screen selects microphone/output devices, input gain, master voice volume, per-player volume, and one of four bundled microphone icons. You can import a custom PNG; it is stored in `config/just-voice/mic-icons/custom.png`. On Linux, Just Voice uses Zenity or KDialog when available and falls back to an in-game path field.
-- The bottom-right speaker panel shows up to five participants whose decoded audio contains audible signal. It includes the local player while their microphone is sending audible voice frames, with a live input meter on the local row.
-- Speaker entries use the player's server-provided name and RGB presentation color. Rows fade out smoothly after speech stops.
-- A color-matched `MIC` marker is rendered above active speakers. It is hidden above the local avatar in first person and shown in third person.
-- Incoming audio has an independent Opus decoder per peer and is mixed into one output device.
+- Удерживайте **V**, чтобы говорить. Клавишу можно переназначить в «Настройки → Управление».
+- Микрофон включается только пока зажата клавиша push-to-talk и установлено голосовое соединение.
+- Уведомления о подключении, отключении, входе и выходе участников, автоматическом переподключении и ошибках выводятся в чат Minecraft и локализуются средствами языковых файлов мода. Action bar используется только для приватных серверных команд.
+- Пока соединение активно, рядом с панелью быстрого доступа отображается иконка микрофона: неактивная, когда V не нажата, и активная во время передачи голоса.
+- Команды:
+  - `/justvoice on` и `/justvoice off` — включить или локально выключить голос. В режиме OFF микрофон и входящее воспроизведение отключаются, но подключение к комнате сохраняется. Другие игроки не видят повторных событий входа и выхода.
+  - `/justvoice reconnect` — принудительно переподключиться. При временном сбое голосового сервера или сети мод также пытается подключиться автоматически, увеличивая интервалы между попытками.
+  - `/justvoice settings` — открыть настройки звука.
+  - `/justvoice players` — настроить громкость и отключение звука для отдельных игроков.
+  - `/justvoice list` — вывести список участников текущей комнаты.
+- В настройках можно выбрать микрофон и устройство вывода, настроить усиление микрофона, общую громкость голоса, громкость отдельных игроков и одну из четырёх встроенных иконок микрофона. Можно импортировать собственный PNG-файл: он сохраняется в `config/just-voice/mic-icons/custom.png`. В Linux при наличии используются Zenity или KDialog; если они недоступны, можно указать путь к файлу прямо в игре.
+- В правом нижнем углу отображается панель до пяти участников, от которых в данный момент поступает слышимый звук. Локальный игрок также отображается в панели, когда его микрофон передаёт голосовые кадры; рядом показывается индикатор уровня входящего сигнала.
+- В строках участников используются имя и RGB-цвет, полученные от сервера. После окончания речи строки плавно исчезают.
+- Над активными участниками отображается цветной маркер `MIC`. В режиме от первого лица он скрывается над локальным игроком, а в режиме от третьего лица — отображается.
+- Для входящего звука используется отдельный декодер Opus для каждого участника, после чего звук сводится в одно устройство вывода.
 
-Audio uses 48 kHz, mono, 20 ms Opus frames. The client has no native Opus dependency and does not require a separate voice-chat application.
+Звук передаётся с частотой 48 кГц, в моно, кадрами Opus по 20 мс. Клиенту не нужна отдельная нативная библиотека Opus или стороннее приложение для голосового чата.
 
-## Configuration
+## Настройка
 
-All mod files are kept under config/just-voice/. After first launch, edit config/just-voice/just-voice.properties. Audio preferences are stored in config/just-voice/just-voice-audio.properties, and a custom microphone icon is stored at config/just-voice/mic-icons/custom.png.properties`.
+Все файлы мода находятся в каталоге `config/just-voice/`. После первого запуска можно отредактировать файл `config/just-voice/just-voice.properties`. Настройки аудио хранятся в `config/just-voice/just-voice-audio.properties`, а пользовательская иконка микрофона — в `config/just-voice/mic-icons/custom.png`.
 
 ```properties
 voice-host=voice.example.com
@@ -46,28 +51,28 @@ voice-port=24454
 ca-cert-file=
 ```
 
-- `voice-host` and `voice-port` are the public QUIC endpoint.
-- `ca-cert-file` is optional. Leave it empty when the server certificate chains to a normal trusted CA. For a private/self-signed development certificate, set it to the PEM certificate file that should be trusted by the client.
-- Never put the world API key in this file or in the client mod.
+- `voice-host` и `voice-port` — публичный адрес и UDP-порт QUIC-сервера.
+- `ca-cert-file` — необязательный параметр. Оставьте его пустым, если сертификат сервера выдан обычным доверенным центром сертификации. Для закрытого или самоподписанного сертификата укажите путь к PEM-файлу сертификата, которому должен доверять клиент.
+- Никогда не указывайте ключ API мира в этом файле или в клиентском моде.
 
-## Transport
+## Сетевое соединение
 
-- QUIC with TLS certificate and hostname validation, ALPN `just-voice/2`, and QUIC DATAGRAM frames.
-- Idle sessions send QUIC PING keep-alives; no dummy voice/audio packets are generated.
-- The roster protocol separates live peer join/leave events from a full roster snapshot, so reconnecting clients do not announce all existing members as new joins.
-- Each incoming voice packet is tagged with a temporary peer ID generated by the voice server.
-- Player roster metadata (name and RGB color) is synchronized when a peer joins and can be refreshed on demand.
-- The client does not send Minecraft UUIDs, backend URLs, or world API keys to the voice server.
-- The QUIC client uses Kwik, a pure-Java QUIC implementation, so no platform-specific QUIC binaries need to be installed.
+- QUIC с проверкой TLS-сертификата и имени хоста, ALPN `just-voice/2` и кадрами QUIC DATAGRAM.
+- В режиме ожидания соединение поддерживается с помощью QUIC PING; пустые голосовые или аудиопакеты не отправляются.
+- Протокол списка участников разделяет события входа/выхода и полный снимок списка. Поэтому при переподключении существующие участники не объявляются повторно вошедшими.
+- Каждому входящему голосовому пакету присваивается временный идентификатор отправителя, созданный голосовым сервером.
+- Данные участников (имя и RGB-цвет) синхронизируются при подключении и могут обновляться по запросу.
+- Клиент не отправляет голосовому серверу UUID Minecraft, адрес backend-сервера или ключи API мира.
+- Для QUIC используется Kwik — реализация QUIC на чистой Java. Устанавливать отдельные QUIC-библиотеки для конкретной операционной системы не требуется.
 
-Protocol v2 is not compatible with protocol v1. Deploy the matching backend and Fabric client versions together.
+Протокол версии 2 несовместим с версией 1. Используйте совместимые версии backend-сервера и Fabric-мода.
 
-## Build
+## Сборка
 
-Requires Java 25 and Gradle 9.8.2:
+Требуются Java 25 и Gradle 9.8.2:
 
 ```shell
 gradle --no-daemon build
 ```
 
-Kwik's project documents its TLS implementation as not independently security-audited; this mod keeps certificate-chain and hostname validation enabled and does not provide an insecure bypass.
+В документации проекта Kwik указано, что его реализация TLS не проходила независимый аудит безопасности. В этом моде проверка цепочки сертификатов и имени хоста включена; отключить её небезопасным обходным способом нельзя.
