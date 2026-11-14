@@ -24,6 +24,9 @@ Leading spaces may be added before @VOICE; the client strips them before parsing
 ## Client commands
 
 - /justvoice on and /justvoice off — locally enable or mute voice without leaving the room.
+- /justvoice reconnect — force a new QUIC connection using the current in-memory invitation token.
+
+Temporary QUIC/network failures trigger automatic reconnect attempts after 1, 2, 4, 8, 15, and then 30 seconds. Retries continue while the Minecraft world connection remains active and local voice is enabled. An expired or revoked invitation stops retries because the world integration must issue a fresh token. Leaving the Minecraft world clears the in-memory token and cancels reconnect.
 - /justvoice settings — open audio device, gain, volume, and microphone icon settings.
 - /justvoice players — open participant-specific volume and mute controls.
 - /justvoice list — print the currently known room roster.

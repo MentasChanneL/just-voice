@@ -319,6 +319,11 @@ public final class QuicVoiceClient implements AutoCloseable {
                 && System.nanoTime() - lastSent <= TimeUnit.MILLISECONDS.toNanos(750);
     }
 
+    public boolean isTransportConnected() {
+        QuicClientConnection current = connection;
+        return !closed && current != null && current.isConnected();
+    }
+
     public boolean isJoined() {
         return joined && !closed;
     }

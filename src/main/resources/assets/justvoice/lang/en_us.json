@@ -65,5 +65,9 @@
   "screen.justvoice.icon_path.description": "Paste the full path to a PNG file",
   "screen.justvoice.icon_path.label": "PNG file path",
   "screen.justvoice.icon_path.hint": "/home/user/Downloads/microphone.png",
-  "screen.justvoice.icon_path.import": "Import"
+  "screen.justvoice.icon_path.import": "Import",
+  "message.justvoice.reconnecting": "Voice server connection lost. Retrying automatically…",
+  "message.justvoice.reconnected": "Voice chat connection restored.",
+  "message.justvoice.enable_before_reconnect": "Enable voice chat first: /justvoice on.",
+  "message.justvoice.reconnect_invitation_required": "No active invitation is available. Request a new invitation from the world server."
 }

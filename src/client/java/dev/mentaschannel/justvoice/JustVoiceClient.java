@@ -111,6 +111,10 @@ public final class JustVoiceClient implements ClientModInitializer {
                             sessionManager.setEnabled(false);
                             return 1;
                         }))
+                        .then(ClientCommands.literal("reconnect").executes(context -> {
+                            sessionManager.reconnect();
+                            return 1;
+                        }))
                         .then(ClientCommands.literal("list").executes(context -> {
                             showRoomRoster();
                             return 1;
