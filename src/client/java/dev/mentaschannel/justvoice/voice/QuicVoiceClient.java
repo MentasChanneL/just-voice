@@ -294,7 +294,12 @@ public final class QuicVoiceClient implements AutoCloseable {
         public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
             // First validate the chain against the JVM roots or the explicitly
             // configured CA. Only then accept the certificate for this IP.
-            delegate.checkServerTrusted(chain, authType);
+            // Agent15 4.0 passes "RSA" to custom trust managers even when
+            // the server certificate uses ECDSA. Its built-in PKIX path uses
+            // "UNKNOWN"; use the same algorithm-neutral value here so valid
+            // ECDSA chains (including current Let's Encrypt certificates) are
+            // not rejected before the IP SAN check.
+            delegate.checkServerTrusted(chain, "UNKNOWN");
             if (chain == null || chain.length == 0 || chain[0] == null) {
                 throw new CertificateException("Server did not provide a certificate");
             }
