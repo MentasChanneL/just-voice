@@ -44,13 +44,13 @@ public final class JustVoiceClient implements ClientModInitializer {
 
     private VoiceSessionManager sessionManager;
     private KeyMapping pushToTalk;
+    private boolean microphoneIconsInitialized;
 
     @Override
     public void onInitializeClient() {
         var modConfigDirectory = FabricLoader.getInstance().getConfigDir().resolve("just-voice");
         VoiceClientConfig config = VoiceClientConfig.load(modConfigDirectory);
         voiceSettings = VoiceSettings.load(modConfigDirectory);
-        MicIconManager.reload(voiceSettings);
         sessionManager = new VoiceSessionManager(config, voiceSettings);
         activeSessionManager = sessionManager;
         SpeakerHudRenderer.register();
@@ -84,6 +84,16 @@ public final class JustVoiceClient implements ClientModInitializer {
                 return false;
             }
             return !consumeActionBarDirective(message);
+        });
+
+        // NativeImage decoding and DynamicTexture registration require the
+        // Minecraft render device. Initialize custom icons on the first client
+        // tick instead of during Fabric's early mod-initialization phase.
+        ClientTickEvents.START_CLIENT_TICK.register(client -> {
+            if (!microphoneIconsInitialized) {
+                MicIconManager.reload(voiceSettings);
+                microphoneIconsInitialized = true;
+            }
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {

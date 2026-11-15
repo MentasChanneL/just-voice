@@ -17,6 +17,7 @@ public record VoiceClientConfig(String voiceHost, int voicePort, Path certificat
     private static final String HOST_KEY = "voice-host";
     private static final String PORT_KEY = "voice-port";
     private static final String CERT_KEY = "ca-cert-file";
+    private static final String DEFAULT_HOST = "191.44.108.2";
     private static final String HOST_PLACEHOLDER = "voice.example.invalid";
     private static final String FILE_NAME = "just-voice.properties";
 
@@ -25,7 +26,7 @@ public record VoiceClientConfig(String voiceHost, int voicePort, Path certificat
         Properties properties = new Properties();
 
         if (Files.notExists(configFile)) {
-            properties.setProperty(HOST_KEY, HOST_PLACEHOLDER);
+            properties.setProperty(HOST_KEY, DEFAULT_HOST);
             properties.setProperty(PORT_KEY, "24454");
             properties.setProperty(CERT_KEY, "");
             try {
