@@ -24,11 +24,11 @@ public final class JustVoiceChat {
     }
 
     public static void joined(String name) {
-        send(text("", 0x72D2FF).append(icon()).append(lang("message.justvoice.peer_joined", name)));
+        send(text("", 0x72D2FF).append(icon()).append(" ").append(lang("message.justvoice.peer_joined", name)));
     }
 
     public static void left(String name) {
-        send(text("", 0x4A88A5).append(icon()).append(lang("message.justvoice.peer_left", name)));
+        send(text("", 0x4A88A5).append(icon()).append(" ").append(lang("message.justvoice.peer_left", name)));
     }
 
     private static void send(Component message) {

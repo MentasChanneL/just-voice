@@ -32,6 +32,7 @@ public final class VoiceSettings {
     private float inputGain = 1.0f;
     private float masterVolume = 1.0f;
     private String microphoneIcon = "v2";
+    private String pushToTalkMode = "hold";
 
     private VoiceSettings(Path configDirectory) {
         this.configDirectory = configDirectory;
@@ -58,6 +59,7 @@ public final class VoiceSettings {
         settings.inputGain = parseFloat(settings.properties.getProperty("input-gain"), 1.0f, MIN_GAIN, MAX_GAIN);
         settings.masterVolume = parseFloat(settings.properties.getProperty("master-volume"), 1.0f, 0.0f, 2.0f);
         settings.microphoneIcon = sanitizeMicrophoneIcon(settings.properties.getProperty("microphone-icon", "v2"));
+        settings.pushToTalkMode = sanitizePushToTalkMode(settings.properties.getProperty("push-to-talk-mode", "hold"));
         return settings;
     }
 
@@ -68,6 +70,10 @@ public final class VoiceSettings {
         } catch (RuntimeException exception) {
             return fallback;
         }
+    }
+
+    private static String sanitizePushToTalkMode(String value) {
+        return "toggle".equalsIgnoreCase(value) ? "toggle" : "hold";
     }
 
     private static String sanitizeMicrophoneIcon(String value) {
@@ -128,6 +134,19 @@ public final class VoiceSettings {
 
     public synchronized void setMicrophoneIcon(String microphoneIcon) {
         this.microphoneIcon = sanitizeMicrophoneIcon(microphoneIcon);
+        save();
+    }
+
+    public synchronized String pushToTalkMode() {
+        return pushToTalkMode;
+    }
+
+    public synchronized boolean isTogglePushToTalk() {
+        return "toggle".equals(pushToTalkMode);
+    }
+
+    public synchronized void setPushToTalkMode(String mode) {
+        this.pushToTalkMode = sanitizePushToTalkMode(mode);
         save();
     }
 
@@ -234,6 +253,7 @@ public final class VoiceSettings {
         properties.setProperty("input-gain", Float.toString(inputGain));
         properties.setProperty("master-volume", Float.toString(masterVolume));
         properties.setProperty("microphone-icon", microphoneIcon);
+        properties.setProperty("push-to-talk-mode", pushToTalkMode);
         try {
             Files.createDirectories(file.getParent());
             try (Writer writer = Files.newBufferedWriter(file)) {
