@@ -220,11 +220,17 @@ public final class VoiceSessionManager {
         }
     }
 
-    /** Live peer-joined event, not an item in an initial roster snapshot. */
+    /**
+     * PEER_PROFILE is an upsert: it announces joins and updates existing
+     * participants (for example, when the world changes their presentation color).
+     * Replacing by peer ID updates HUD/overhead colors without duplicating join notices.
+     */
     private void handlePeerProfile(VoicePeerProfile profile) {
         VoicePeerProfile previous = peerProfiles.put(profile.peerId(), profile);
-        if (previous == null) {
+        if (previous == null && !isSelfPeer(profile.peerId())) {
             JustVoiceChat.joined(profile.name());
+        } else if (previous != null && previous.rgbColor() != profile.rgbColor()) {
+            LOGGER.debug("Updated voice presentation color for {}", profile.name());
         }
     }
 

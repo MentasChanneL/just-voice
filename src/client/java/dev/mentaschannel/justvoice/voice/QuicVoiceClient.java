@@ -36,7 +36,7 @@ import java.util.function.Consumer;
  *   0x02 + 8-byte id   = JOINED
  *   0x03              = LEAVE
  *   0x04              = ROSTER_REQUEST
- *   0x05              = PEER_PROFILE
+ *   0x05              = PEER_PROFILE (join notification / live profile upsert)
  *   0x06              = PEER_LEFT
  *   0x08              = ROSTER_BEGIN
  *   0x09 + profile    = ROSTER_ENTRY
