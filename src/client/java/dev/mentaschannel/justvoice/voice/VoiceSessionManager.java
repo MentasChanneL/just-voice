@@ -397,8 +397,12 @@ public final class VoiceSessionManager {
             ));
         });
 
+        // Packet arrival timestamps fluctuate independently for each sender. Sorting
+        // by the newest packet makes simultaneous speakers swap rows every few frames.
+        // Keep local player first and use a stable name/peer-id order for everyone else.
         result.sort(Comparator.comparing(SpeakerHudEntry::self).reversed()
-                .thenComparing(Comparator.comparingLong(SpeakerHudEntry::lastActiveAtNanos).reversed()));
+                .thenComparing(SpeakerHudEntry::name, String.CASE_INSENSITIVE_ORDER)
+                .thenComparingLong(SpeakerHudEntry::peerId));
         if (result.size() > MAX_VISIBLE_SPEAKERS)
             return List.copyOf(result.subList(0, MAX_VISIBLE_SPEAKERS));
         return List.copyOf(result);

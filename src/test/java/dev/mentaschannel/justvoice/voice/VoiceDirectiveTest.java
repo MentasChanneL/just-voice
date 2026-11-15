@@ -71,6 +71,33 @@ final class VoiceDirectiveTest {
         assertFalse(VoiceDirective.hasMarker(null));
     }
 
+
+    @Test
+    void audioMixPreservesSingleVoiceLevelBelowLimiterKnee() {
+        assertEquals(12_000, VoiceAudioMixer.limitSample(12_000.0));
+    }
+
+    @Test
+    void audioMixUsesHeadroomForSimultaneousVoices() {
+        double gain = VoiceAudioMixer.gainForVoices(2);
+        short mixedPeak = VoiceAudioMixer.limitSample(2.0 * Short.MAX_VALUE * gain);
+
+        assertTrue(gain < 1.0);
+        assertTrue(mixedPeak > 0);
+        assertTrue(mixedPeak < Short.MAX_VALUE,
+                "Overlapping voices should be softly limited instead of hard-clipped");
+    }
+
+    @Test
+    void audioLimiterHandlesPositiveAndNegativePeaksSymmetrically() {
+        short positive = VoiceAudioMixer.limitSample(90_000.0);
+        short negative = VoiceAudioMixer.limitSample(-90_000.0);
+
+        assertTrue(positive <= Short.MAX_VALUE);
+        assertTrue(negative >= -Short.MAX_VALUE);
+        assertEquals(positive, -negative);
+    }
+
     @Test
     void doesNotIncludeTokenInToString() {
         VoiceDirective directive = VoiceDirective.parse("@VOICE INVITE " + VALID_TOKEN);

@@ -116,6 +116,7 @@ public final class AudioPlayback implements AutoCloseable {
         int[] mixed = new int[MIX_FRAME_SAMPLES];
         short[] outputSamples = new short[MIX_FRAME_SAMPLES];
         ArrayDeque<Integer> freeBuffers = new ArrayDeque<>();
+        double mixGain = 1.0;
 
         try {
             String selectedDevice = settings.outputDevice();
@@ -188,14 +189,22 @@ public final class AudioPlayback implements AutoCloseable {
                     freeBuffers.addLast(AL10.alSourceUnqueueBuffers(source));
                 }
 
-                java.util.Arrays.fill(mixed, 0);
+                // Do not consume per-peer PCM frames until OpenAL has an output
+                // buffer available. Otherwise a fast packet queue can drain decoded
+                // frames while all output buffers are still queued, silently dropping
+                // audio before it ever reaches the speakers.
+                boolean canQueueAudio = !freeBuffers.isEmpty();
+                if (canQueueAudio) {
+                    java.util.Arrays.fill(mixed, 0);
+                }
                 boolean hasAudio = false;
+                int activeVoices = 0;
                 long now = System.nanoTime();
                 Iterator<Map.Entry<Long, PeerDecoder>> iterator = decoders.entrySet().iterator();
                 while (iterator.hasNext()) {
                     Map.Entry<Long, PeerDecoder> entry = iterator.next();
                     PeerDecoder state = entry.getValue();
-                    DecodedFrame decoded = state.frames.pollFirst();
+                    DecodedFrame decoded = canQueueAudio ? state.frames.pollFirst() : null;
                     if (decoded != null) {
                         String peerName = peerNameResolver.apply(entry.getKey());
                         double volume = settings.isPlayerMuted(peerName)
@@ -203,6 +212,7 @@ public final class AudioPlayback implements AutoCloseable {
                                 : settings.playerVolume(peerName) * settings.masterVolume();
                         if (volume > 0.0) {
                             hasAudio = true;
+                            activeVoices++;
                             int count = Math.min(MIX_FRAME_SAMPLES, decoded.samples());
                             for (int i = 0; i < count; i++) {
                                 mixed[i] += (int) Math.round(decoded.pcm()[i] * volume);
@@ -216,12 +226,14 @@ public final class AudioPlayback implements AutoCloseable {
                     }
                 }
 
-                if (hasAudio && !freeBuffers.isEmpty()) {
+                if (hasAudio) {
+                    // Keep roughly constant perceived loudness as people join the
+                    // mix, then apply a soft limiter to peaks instead of hard clipping.
+                    double targetMixGain = VoiceAudioMixer.gainForVoices(activeVoices);
+                    double gainSmoothing = targetMixGain < mixGain ? 0.35 : 0.08;
+                    mixGain += (targetMixGain - mixGain) * gainSmoothing;
                     for (int i = 0; i < MIX_FRAME_SAMPLES; i++) {
-                        outputSamples[i] = (short) Math.max(
-                                Short.MIN_VALUE,
-                                Math.min(Short.MAX_VALUE, mixed[i])
-                        );
+                        outputSamples[i] = VoiceAudioMixer.limitSample(mixed[i] * mixGain);
                     }
 
                     int buffer = freeBuffers.removeFirst();
