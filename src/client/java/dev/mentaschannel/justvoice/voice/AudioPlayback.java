@@ -24,6 +24,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiConsumer;
 import java.util.function.LongConsumer;
 import java.util.function.LongFunction;
 
@@ -43,8 +44,10 @@ public final class AudioPlayback implements AutoCloseable {
 
     private final ArrayBlockingQueue<IncomingVoiceFrame> packets = new ArrayBlockingQueue<>(QUEUE_CAPACITY);
     private final LongConsumer speakerActivityConsumer;
+    private final BiConsumer<Long, Float> speakerLevelConsumer;
     private final LongFunction<String> peerNameResolver;
     private final VoiceSettings settings;
+    private final boolean forceEnabled;
     private final ConcurrentLinkedQueue<Long> removedPeers = new ConcurrentLinkedQueue<>();
     private final AtomicBoolean running = new AtomicBoolean(true);
     private Thread worker;
@@ -54,9 +57,34 @@ public final class AudioPlayback implements AutoCloseable {
             LongFunction<String> peerNameResolver,
             VoiceSettings settings
     ) {
+        this(speakerActivityConsumer, (peerId, level) -> { }, peerNameResolver, settings, false);
+    }
+
+    public AudioPlayback(
+            LongConsumer speakerActivityConsumer,
+            BiConsumer<Long, Float> speakerLevelConsumer,
+            LongFunction<String> peerNameResolver,
+            VoiceSettings settings
+    ) {
+        this(speakerActivityConsumer, speakerLevelConsumer, peerNameResolver, settings, false);
+    }
+
+    /**
+     * The force-enabled mode is used only for the local microphone loopback
+     * test, which must remain available even when voice chat is switched off.
+     */
+    public AudioPlayback(
+            LongConsumer speakerActivityConsumer,
+            BiConsumer<Long, Float> speakerLevelConsumer,
+            LongFunction<String> peerNameResolver,
+            VoiceSettings settings,
+            boolean forceEnabled
+    ) {
         this.speakerActivityConsumer = speakerActivityConsumer;
+        this.speakerLevelConsumer = speakerLevelConsumer;
         this.peerNameResolver = peerNameResolver;
         this.settings = settings;
+        this.forceEnabled = forceEnabled;
     }
 
     public void start() {
@@ -122,7 +150,7 @@ public final class AudioPlayback implements AutoCloseable {
             while (running.get()) {
                 IncomingVoiceFrame first = packets.poll(20, TimeUnit.MILLISECONDS);
 
-                if (!settings.isEnabled()) {
+                if (!forceEnabled && !settings.isEnabled()) {
                     // Local OFF is not a room disconnect: discard incoming audio
                     // and silence any already queued samples without closing QUIC.
                     packets.clear();
@@ -292,6 +320,7 @@ public final class AudioPlayback implements AutoCloseable {
                 squareSum += (double) pcm[i] * pcm[i];
             }
             double rms = Math.sqrt(squareSum / samples);
+            speakerLevelConsumer.accept(frame.peerId(), (float) Math.min(1.0, rms / 8192.0));
             if (rms >= 350.0) {
                 speakerActivityConsumer.accept(frame.peerId());
             }

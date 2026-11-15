@@ -130,25 +130,18 @@ public final class SpeakerHudRenderer {
                     true
             );
 
-            if (speaker.self()) {
-                drawMiniMeter(
-                        graphics,
-                        x + panelWidth - 31,
-                        y + 9,
-                        22,
-                        6,
-                        speaker.inputLevel(),
-                        opacity
-                );
-            } else {
-                graphics.fill(
-                        x + panelWidth - 11,
-                        y + 9,
-                        x + panelWidth - 5,
-                        y + 15,
-                        withOpacity(speaker.color(), opacity)
-                );
-            }
+            // Show the decoded input level for every participant, not just
+            // the local player. Remote levels are measured from their Opus
+            // frames by AudioPlayback.
+            drawMiniMeter(
+                    graphics,
+                    x + panelWidth - 31,
+                    y + 9,
+                    22,
+                    6,
+                    speaker.inputLevel(),
+                    opacity
+            );
 
             y += ROW_HEIGHT + ROW_GAP;
         }

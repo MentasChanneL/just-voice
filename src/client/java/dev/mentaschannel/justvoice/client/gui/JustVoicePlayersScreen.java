@@ -148,6 +148,12 @@ public final class JustVoicePlayersScreen extends Screen {
                     .bounds(left + panelWidth - 88, controlsY, 88, 20).build());
         }
 
+        addRenderableWidget(Button.builder(
+                        Component.translatable("screen.justvoice.open_settings"),
+                        button -> Minecraft.getInstance().gui.setScreen(new JustVoiceConfigScreen(this))
+                )
+                .bounds(width / 2 - 100, height - 52, 200, 20).build());
+
         addRenderableWidget(Button.builder(Component.translatable("gui.done"), button -> onClose())
                 .bounds(width / 2 - 100, height - 28, 200, 20).build());
     }

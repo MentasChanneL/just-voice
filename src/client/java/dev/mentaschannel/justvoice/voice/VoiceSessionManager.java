@@ -11,6 +11,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -24,6 +25,7 @@ public final class VoiceSessionManager {
     private static final long SPEAKER_VISIBLE_NANOS = SPEAKER_FADE_START_NANOS + SPEAKER_FADE_DURATION_NANOS;
     private static final long ROSTER_REFRESH_NANOS = TimeUnit.SECONDS.toNanos(5);
     private static final int MAX_VISIBLE_SPEAKERS = 5;
+    private static final long MICROPHONE_TEST_PEER_ID = Long.MIN_VALUE;
     private static final long[] RECONNECT_DELAYS_SECONDS = {1, 2, 4, 8, 15, 30};
 
     public record SpeakerHudEntry(
@@ -49,9 +51,14 @@ public final class VoiceSessionManager {
     private final AtomicReference<QuicVoiceClient> connection = new AtomicReference<>();
     private final ConcurrentHashMap<Long, VoicePeerProfile> peerProfiles = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Long> lastVoiceAtNanos = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, Float> peerLevels = new ConcurrentHashMap<>();
+    private final AtomicInteger microphoneTestSequence = new AtomicInteger();
 
     private volatile AudioPlayback playback;
     private volatile MicrophoneCapture microphone;
+    private volatile MicrophoneCapture microphoneTestCapture;
+    private volatile AudioPlayback microphoneTestPlayback;
+    private volatile float microphoneTestLevel;
     private volatile boolean pushToTalkDown;
     private volatile boolean microphoneUnavailable;
     private volatile float microphoneLevel;
@@ -172,6 +179,7 @@ public final class VoiceSessionManager {
                     closeAudio();
                     peerProfiles.clear();
                     lastVoiceAtNanos.clear();
+                    peerLevels.clear();
                     LOGGER.warn("Could not connect to Just Voice server: {}", exception.getMessage());
                     scheduleReconnect();
                 }
@@ -182,7 +190,8 @@ public final class VoiceSessionManager {
 
     private AudioPlayback createPlayback() {
         return new AudioPlayback(
-                peerId -> lastVoiceAtNanos.put(peerId, System.nanoTime()),
+                this::markSpeakerActivity,
+                this::setPeerLevel,
                 peerId -> {
                     VoicePeerProfile profile = peerProfiles.get(peerId);
                     return profile == null ? "" : profile.name();
@@ -191,7 +200,20 @@ public final class VoiceSessionManager {
         );
     }
 
+    private void markSpeakerActivity(long peerId) {
+        lastVoiceAtNanos.put(peerId, System.nanoTime());
+    }
+
+    private void setPeerLevel(Long peerId, Float level) {
+        if (peerId != null) {
+            peerLevels.put(peerId, level == null ? 0.0f : Math.clamp(level, 0.0f, 1.0f));
+        }
+    }
+
     private void receiveVoicePacket(IncomingVoiceFrame frame) {
+        // Mark packet activity before decoding so the overhead microphone icon
+        // also works for quiet speech and does not depend on an RMS threshold.
+        lastVoiceAtNanos.put(frame.peerId(), System.nanoTime());
         AudioPlayback currentPlayback = playback;
         if (currentPlayback != null) {
             currentPlayback.enqueue(frame);
@@ -217,6 +239,7 @@ public final class VoiceSessionManager {
             if (!incomingIds.contains(oldPeerId)) {
                 peerProfiles.remove(oldPeerId);
                 lastVoiceAtNanos.remove(oldPeerId);
+                peerLevels.remove(oldPeerId);
                 AudioPlayback currentPlayback = playback;
                 if (currentPlayback != null) {
                     currentPlayback.removePeer(oldPeerId);
@@ -231,6 +254,7 @@ public final class VoiceSessionManager {
     private void handlePeerLeft(Long peerId) {
         VoicePeerProfile removed = peerProfiles.remove(peerId);
         lastVoiceAtNanos.remove(peerId);
+        peerLevels.remove(peerId);
         AudioPlayback currentPlayback = playback;
         if (currentPlayback != null) currentPlayback.removePeer(peerId);
         if (removed != null) JustVoiceChat.left(removed.name());
@@ -245,6 +269,7 @@ public final class VoiceSessionManager {
         QuicVoiceClient failedConnection = connection.getAndSet(null);
         peerProfiles.clear();
         lastVoiceAtNanos.clear();
+        peerLevels.clear();
 
         if (isExpiredTokenError(sanitized)) {
             pendingToken = null;
@@ -287,7 +312,8 @@ public final class VoiceSessionManager {
 
     private void updateMicrophone() {
         QuicVoiceClient current = connection.get();
-        boolean shouldCapture = settings.isEnabled()
+        boolean shouldCapture = microphoneTestCapture == null
+                && settings.isEnabled()
                 && pushToTalkDown
                 && current != null
                 && current.isJoined();
@@ -332,9 +358,13 @@ public final class VoiceSessionManager {
             current.requestRoster();
         }
 
-        lastVoiceAtNanos.entrySet().removeIf(
-                entry -> now - entry.getValue() > TimeUnit.SECONDS.toNanos(3)
-        );
+        lastVoiceAtNanos.entrySet().removeIf(entry -> {
+            boolean expired = now - entry.getValue() > TimeUnit.SECONDS.toNanos(3);
+            if (expired) {
+                peerLevels.remove(entry.getKey());
+            }
+            return expired;
+        });
     }
 
     public List<SpeakerHudEntry> getActiveSpeakers() {
@@ -356,7 +386,7 @@ public final class VoiceSessionManager {
                     profile.name(),
                     profile.argbColor(),
                     peerId == selfId,
-                    peerId == selfId ? microphoneLevel : 0.0f,
+                    peerId == selfId ? microphoneLevel : peerLevels.getOrDefault(peerId, 0.0f),
                     lastActive
             ));
         });
@@ -382,7 +412,7 @@ public final class VoiceSessionManager {
             }
 
             VoicePeerProfile profile = peerProfiles.get(item.getKey());
-            if (profile != null && profile.name().equals(minecraftName)) {
+            if (profile != null && profile.name().equalsIgnoreCase(minecraftName)) {
                 newestActivity = activity;
                 color = profile.argbColor();
             }
@@ -415,6 +445,10 @@ public final class VoiceSessionManager {
     }
 
     public synchronized void restartPlayback() {
+        if (microphoneTestCapture != null) {
+            stopMicrophoneTestResources();
+            startMicrophoneTest();
+        }
         if (!isConnected()) return;
         closeAudio();
         playback = createPlayback();
@@ -422,6 +456,7 @@ public final class VoiceSessionManager {
     }
 
     public synchronized void restartMicrophone() {
+        stopMicrophoneTestResources();
         stopMicrophone();
         microphoneUnavailable = false;
         updateMicrophone();
@@ -440,6 +475,86 @@ public final class VoiceSessionManager {
 
     public boolean isEnabled() {
         return settings.isEnabled();
+    }
+
+    public boolean isMicrophoneTestActive() {
+        return microphoneTestCapture != null;
+    }
+
+    public float getMicrophoneTestLevel() {
+        return microphoneTestLevel;
+    }
+
+    /** Starts a local-only microphone monitor; no audio is sent to the voice server. */
+    public synchronized void startMicrophoneTest() {
+        if (microphoneTestCapture != null) {
+            return;
+        }
+
+        stopMicrophone();
+        microphoneTestLevel = 0.0f;
+        AudioPlayback testPlayback = new AudioPlayback(
+                peerId -> { },
+                (peerId, level) -> { },
+                peerId -> "",
+                settings,
+                true
+        );
+        microphoneTestPlayback = testPlayback;
+        testPlayback.start();
+
+        MicrophoneCapture testCapture = new MicrophoneCapture(
+                frame -> {
+                    AudioPlayback output = microphoneTestPlayback;
+                    if (output != null) {
+                        output.enqueue(new IncomingVoiceFrame(
+                                MICROPHONE_TEST_PEER_ID,
+                                microphoneTestSequence.getAndIncrement(),
+                                (int) TimeUnit.NANOSECONDS.toMillis(System.nanoTime()),
+                                frame
+                        ));
+                    }
+                },
+                message -> handleMicrophoneTestError(message),
+                level -> microphoneTestLevel = level == null ? 0.0f : Math.clamp(level, 0.0f, 1.0f),
+                settings
+        );
+        microphoneTestCapture = testCapture;
+        testCapture.start();
+        JustVoiceChat.info("message.justvoice.mic_test_started");
+    }
+
+    public synchronized void stopMicrophoneTest() {
+        if (microphoneTestCapture == null && microphoneTestPlayback == null) {
+            return;
+        }
+        stopMicrophoneTestResources();
+        JustVoiceChat.info("message.justvoice.mic_test_stopped");
+        updateMicrophone();
+    }
+
+    private void handleMicrophoneTestError(String message) {
+        synchronized (this) {
+            stopMicrophoneTestResources();
+            updateMicrophone();
+        }
+        LOGGER.warn("Just Voice microphone test failed: {}", sanitizeServerMessage(message));
+        JustVoiceChat.error("message.justvoice.microphone_unavailable");
+    }
+
+    private void stopMicrophoneTestResources() {
+        MicrophoneCapture capture = microphoneTestCapture;
+        microphoneTestCapture = null;
+        microphoneTestLevel = 0.0f;
+        if (capture != null) {
+            capture.close();
+        }
+
+        AudioPlayback output = microphoneTestPlayback;
+        microphoneTestPlayback = null;
+        if (output != null) {
+            output.close();
+        }
     }
 
     /**
@@ -577,8 +692,10 @@ public final class VoiceSessionManager {
     private void closeResources() {
         stopMicrophone();
         closeAudio();
+        stopMicrophoneTestResources();
         peerProfiles.clear();
         lastVoiceAtNanos.clear();
+        peerLevels.clear();
         QuicVoiceClient current = connection.getAndSet(null);
         if (current != null)
             Thread.ofVirtual().name("just-voice-disconnect").start(current::close);

@@ -30,8 +30,8 @@ import java.util.Locale;
 
 /** Main audio settings screen exposed through Mod Menu and /justvoice settings. */
 public final class JustVoiceConfigScreen extends Screen {
-    private static final int ICON_CARD_SIZE = 42;
-    private static final int ICON_CARD_GAP = 7;
+    private static final int ICON_CARD_SIZE = 36;
+    private static final int ICON_CARD_GAP = 5;
     private static final List<String> ICON_CHOICES = List.of("v1", "v2", "v3", "v4", "custom");
 
     private record IconCard(String id, int x, int y) {
@@ -41,10 +41,14 @@ public final class JustVoiceConfigScreen extends Screen {
     private final VoiceSettings settings;
     private final List<IconCard> iconCards = new ArrayList<>();
 
-    private List<String> inputDevices;
-    private List<String> outputDevices;
-    private int inputDeviceIndex;
-    private int outputDeviceIndex;
+    private Button microphoneTestButton;
+    private int microphoneTestMeterY;
+    private int contentLeft;
+    private int contentWidth;
+    private boolean compactLayout;
+    private int secondaryLeft;
+    private int secondaryWidth;
+    private int compactDividerX;
 
     public JustVoiceConfigScreen(Screen parent) {
         super(Component.translatable("screen.justvoice.title"));
@@ -54,40 +58,80 @@ public final class JustVoiceConfigScreen extends Screen {
 
     @Override
     protected void init() {
-        inputDevices = VoiceSettings.availableInputDevices();
-        outputDevices = VoiceSettings.availableOutputDevices();
-        inputDeviceIndex = selectedIndex(inputDevices, settings.inputDevice());
-        outputDeviceIndex = selectedIndex(outputDevices, settings.outputDevice());
         iconCards.clear();
-
         int center = width / 2;
         int buttonWidth = Math.min(360, width - 32);
         int left = center - buttonWidth / 2;
+        contentLeft = left;
+        contentWidth = buttonWidth;
+        compactLayout = height < 400 && width >= 480;
+        if (compactLayout) {
+            initCompactLayout();
+            return;
+        }
         int y = 54;
 
         addRenderableWidget(Button.builder(voiceEnabledLabel(), button -> {
+                    boolean enabling = !settings.isEnabled();
                     var session = JustVoiceClient.getActiveSessionManager();
+                    if (!enabling) {
+                        JustVoiceClient.resetPushToTalkToggle();
+                    }
                     if (session != null) {
-                        session.setEnabled(!settings.isEnabled());
+                        session.setEnabled(enabling);
                     }
                     button.setMessage(voiceEnabledLabel());
                 })
                 .bounds(left, y, buttonWidth, 20).build());
         y += 26;
 
-        addRenderableWidget(Button.builder(inputDeviceLabel(), button -> {
-                    cycleInputDevice();
-                    button.setMessage(inputDeviceLabel());
+        addRenderableWidget(Button.builder(pushToTalkModeLabel(), button -> {
+                    settings.setPushToTalkMode(
+                            settings.isTogglePushToTalk() ? "hold" : "toggle"
+                    );
+                    button.setMessage(pushToTalkModeLabel());
+                    var session = JustVoiceClient.getActiveSessionManager();
+                    if (session != null && !settings.isTogglePushToTalk()) {
+                        session.setPushToTalk(false);
+                    }
                 })
                 .bounds(left, y, buttonWidth, 20).build());
         y += 26;
 
-        addRenderableWidget(Button.builder(outputDeviceLabel(), button -> {
-                    cycleOutputDevice();
-                    button.setMessage(outputDeviceLabel());
-                })
+        addRenderableWidget(Button.builder(inputDeviceLabel(), button ->
+                        Minecraft.getInstance().gui.setScreen(new VoiceDeviceSelectionScreen(
+                                this,
+                                VoiceDeviceSelectionScreen.DeviceType.INPUT
+                        )))
                 .bounds(left, y, buttonWidth, 20).build());
-        y += 27;
+        y += 26;
+
+        addRenderableWidget(Button.builder(outputDeviceLabel(), button ->
+                        Minecraft.getInstance().gui.setScreen(new VoiceDeviceSelectionScreen(
+                                this,
+                                VoiceDeviceSelectionScreen.DeviceType.OUTPUT
+                        )))
+                .bounds(left, y, buttonWidth, 20).build());
+        y += 26;
+
+        microphoneTestButton = Button.builder(microphoneTestLabel(), button -> {
+                    var session = JustVoiceClient.getActiveSessionManager();
+                    if (session == null) {
+                        return;
+                    }
+                    if (session.isMicrophoneTestActive()) {
+                        session.stopMicrophoneTest();
+                    } else {
+                        session.startMicrophoneTest();
+                    }
+                    button.setMessage(microphoneTestLabel());
+                })
+                .bounds(left, y, buttonWidth, 20)
+                .tooltip(Tooltip.create(Component.translatable("screen.justvoice.mic_test_tooltip")))
+                .build();
+        addRenderableWidget(microphoneTestButton);
+        microphoneTestMeterY = y + 23;
+        y += 40;
 
         int iconRowWidth = ICON_CHOICES.size() * ICON_CARD_SIZE
                 + (ICON_CHOICES.size() - 1) * ICON_CARD_GAP;
@@ -179,6 +223,176 @@ public final class JustVoiceConfigScreen extends Screen {
 
         addRenderableWidget(Button.builder(Component.translatable("gui.done"), button -> onClose())
                 .bounds(center - 100, Math.min(height - 28, y), 200, 20).build());
+    }
+
+    private void initCompactLayout() {
+        int margin = 16;
+        int columnGap = 12;
+        int availableWidth = width - margin * 2 - columnGap;
+        int primaryWidth = Math.round(availableWidth * 0.53f);
+        int secondaryWidth = availableWidth - primaryWidth;
+        int primaryLeft = margin;
+        int secondaryLeft = primaryLeft + primaryWidth + columnGap;
+
+        contentLeft = primaryLeft;
+        contentWidth = primaryWidth;
+        this.secondaryLeft = secondaryLeft;
+        this.secondaryWidth = secondaryWidth;
+        compactDividerX = primaryLeft + primaryWidth + columnGap / 2;
+
+        int y = 68;
+        addRenderableWidget(Button.builder(voiceEnabledLabel(), button -> {
+                    boolean enabling = !settings.isEnabled();
+                    var session = JustVoiceClient.getActiveSessionManager();
+                    if (!enabling) {
+                        JustVoiceClient.resetPushToTalkToggle();
+                    }
+                    if (session != null) {
+                        session.setEnabled(enabling);
+                    }
+                    button.setMessage(voiceEnabledLabel());
+                })
+                .bounds(primaryLeft, y, primaryWidth, 20).build());
+        y += 26;
+
+        addRenderableWidget(Button.builder(pushToTalkModeLabel(), button -> {
+                    settings.setPushToTalkMode(
+                            settings.isTogglePushToTalk() ? "hold" : "toggle"
+                    );
+                    button.setMessage(pushToTalkModeLabel());
+                    var session = JustVoiceClient.getActiveSessionManager();
+                    if (session != null && !settings.isTogglePushToTalk()) {
+                        session.setPushToTalk(false);
+                    }
+                })
+                .bounds(primaryLeft, y, primaryWidth, 20).build());
+        y += 26;
+
+        addRenderableWidget(Button.builder(inputDeviceLabel(), button ->
+                        Minecraft.getInstance().gui.setScreen(new VoiceDeviceSelectionScreen(
+                                this,
+                                VoiceDeviceSelectionScreen.DeviceType.INPUT
+                        )))
+                .bounds(primaryLeft, y, primaryWidth, 20)
+                .tooltip(Tooltip.create(Component.translatable("screen.justvoice.device_button_tooltip")))
+                .build());
+        y += 26;
+
+        addRenderableWidget(Button.builder(outputDeviceLabel(), button ->
+                        Minecraft.getInstance().gui.setScreen(new VoiceDeviceSelectionScreen(
+                                this,
+                                VoiceDeviceSelectionScreen.DeviceType.OUTPUT
+                        )))
+                .bounds(primaryLeft, y, primaryWidth, 20)
+                .tooltip(Tooltip.create(Component.translatable("screen.justvoice.device_button_tooltip")))
+                .build());
+        y += 26;
+
+        microphoneTestButton = Button.builder(microphoneTestLabel(), button -> {
+                    var session = JustVoiceClient.getActiveSessionManager();
+                    if (session == null) {
+                        return;
+                    }
+                    if (session.isMicrophoneTestActive()) {
+                        session.stopMicrophoneTest();
+                    } else {
+                        session.startMicrophoneTest();
+                    }
+                    button.setMessage(microphoneTestLabel());
+                })
+                .bounds(primaryLeft, y, primaryWidth, 20)
+                .tooltip(Tooltip.create(Component.translatable("screen.justvoice.mic_test_tooltip")))
+                .build();
+        addRenderableWidget(microphoneTestButton);
+        microphoneTestMeterY = y + 23;
+
+        int iconRowWidth = ICON_CHOICES.size() * ICON_CARD_SIZE
+                + (ICON_CHOICES.size() - 1) * ICON_CARD_GAP;
+        int iconLeft = secondaryLeft + (secondaryWidth - iconRowWidth) / 2;
+        int iconY = 68;
+        for (int i = 0; i < ICON_CHOICES.size(); i++) {
+            String id = ICON_CHOICES.get(i);
+            int x = iconLeft + i * (ICON_CARD_SIZE + ICON_CARD_GAP);
+            Button button = Button.builder(
+                            Component.empty(),
+                            pressed -> {
+                                if ("custom".equals(id)) {
+                                    if (!MicIconManager.hasCustomIcon()
+                                            || "custom".equals(settings.microphoneIcon())) {
+                                        chooseCustomIcon();
+                                    } else {
+                                        MicIconManager.select(id, settings);
+                                    }
+                                } else {
+                                    MicIconManager.select(id, settings);
+                                }
+                            }
+                    )
+                    .bounds(x, iconY, ICON_CARD_SIZE, ICON_CARD_SIZE)
+                    .tooltip(Tooltip.create(iconTooltip(id)))
+                    .build();
+            addRenderableWidget(button);
+            iconCards.add(new IconCard(id, x, iconY));
+        }
+
+        int sliderY = 116;
+        addRenderableWidget(new AbstractSliderButton(
+                secondaryLeft, sliderY, secondaryWidth, 20,
+                Component.empty(),
+                normalizedInputGain()
+        ) {
+            {
+                updateMessage();
+            }
+
+            @Override
+            protected void updateMessage() {
+                float gain = 0.5f + (float) value * 2.5f;
+                setMessage(Component.translatable(
+                        "screen.justvoice.input_gain",
+                        Math.round(gain * 100)
+                ));
+            }
+
+            @Override
+            protected void applyValue() {
+                settings.setInputGain(0.5f + (float) value * 2.5f);
+                updateMessage();
+            }
+        });
+
+        addRenderableWidget(new AbstractSliderButton(
+                secondaryLeft, sliderY + 28, secondaryWidth, 20,
+                Component.empty(),
+                settings.masterVolume() / 2.0
+        ) {
+            {
+                updateMessage();
+            }
+
+            @Override
+            protected void updateMessage() {
+                setMessage(Component.translatable(
+                        "screen.justvoice.master_volume",
+                        Math.round((float) value * 200)
+                ));
+            }
+
+            @Override
+            protected void applyValue() {
+                settings.setMasterVolume((float) value * 2.0f);
+                updateMessage();
+            }
+        });
+
+        addRenderableWidget(Button.builder(
+                        Component.translatable("screen.justvoice.manage_players"),
+                        button -> Minecraft.getInstance().gui.setScreen(new JustVoicePlayersScreen(this, 0))
+                )
+                .bounds(secondaryLeft, sliderY + 58, secondaryWidth, 22).build());
+
+        addRenderableWidget(Button.builder(Component.translatable("gui.done"), button -> onClose())
+                .bounds(width / 2 - 100, height - 28, 200, 20).build());
     }
 
     private Component iconTooltip(String id) {
@@ -364,11 +578,6 @@ public final class JustVoiceConfigScreen extends Screen {
         }
     }
 
-    private static int selectedIndex(List<String> devices, String current) {
-        int index = devices.indexOf(current == null ? "" : current);
-        return index < 0 ? 0 : index;
-    }
-
     private Component voiceEnabledLabel() {
         return Component.translatable(
                 settings.isEnabled()
@@ -377,26 +586,25 @@ public final class JustVoiceConfigScreen extends Screen {
         );
     }
 
+    private Component pushToTalkModeLabel() {
+        return Component.translatable(
+                settings.isTogglePushToTalk()
+                        ? "screen.justvoice.ptt_toggle"
+                        : "screen.justvoice.ptt_hold"
+        );
+    }
+
+    private Component microphoneTestLabel() {
+        var session = JustVoiceClient.getActiveSessionManager();
+        return Component.translatable(
+                session != null && session.isMicrophoneTestActive()
+                        ? "screen.justvoice.mic_test_stop"
+                        : "screen.justvoice.mic_test_start"
+        );
+    }
+
     private double normalizedInputGain() {
         return Math.max(0.0, Math.min(1.0, (settings.inputGain() - 0.5f) / 2.5f));
-    }
-
-    private void cycleInputDevice() {
-        inputDeviceIndex = (inputDeviceIndex + 1) % inputDevices.size();
-        settings.setInputDevice(inputDevices.get(inputDeviceIndex));
-        var session = JustVoiceClient.getActiveSessionManager();
-        if (session != null) {
-            session.restartMicrophone();
-        }
-    }
-
-    private void cycleOutputDevice() {
-        outputDeviceIndex = (outputDeviceIndex + 1) % outputDevices.size();
-        settings.setOutputDevice(outputDevices.get(outputDeviceIndex));
-        var session = JustVoiceClient.getActiveSessionManager();
-        if (session != null) {
-            session.restartPlayback();
-        }
     }
 
     private Component inputDeviceLabel() {
@@ -421,6 +629,16 @@ public final class JustVoiceConfigScreen extends Screen {
             float partialTick
     ) {
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+        graphics.centeredText(
+                font,
+                Component.translatable("screen.justvoice.keybind_hint"),
+                width / 2,
+                height - 42,
+                0xFF888888
+        );
+        if (microphoneTestButton != null) {
+            microphoneTestButton.setMessage(microphoneTestLabel());
+        }
         graphics.centeredText(font, title, width / 2, 24, 0xFFFFFFFF);
         graphics.centeredText(
                 font,
@@ -429,13 +647,63 @@ public final class JustVoiceConfigScreen extends Screen {
                 42,
                 0xFFAAAAAA
         );
-        graphics.centeredText(
-                font,
-                Component.translatable("screen.justvoice.microphone_icon"),
-                width / 2,
-                iconCards.isEmpty() ? 0 : iconCards.getFirst().y() - 13,
-                0xFFE3E6EB
-        );
+        var session = JustVoiceClient.getActiveSessionManager();
+        if (session != null && session.isMicrophoneTestActive()) {
+            graphics.fill(
+                    contentLeft,
+                    microphoneTestMeterY,
+                    contentLeft + contentWidth,
+                    microphoneTestMeterY + 4,
+                    0xFF333B47
+            );
+            int levelWidth = Math.round(contentWidth * session.getMicrophoneTestLevel());
+            if (levelWidth > 0) {
+                graphics.fill(
+                        contentLeft,
+                        microphoneTestMeterY,
+                        contentLeft + levelWidth,
+                        microphoneTestMeterY + 4,
+                        0xFF48D597
+                );
+            }
+        }
+
+        if (compactLayout) {
+            graphics.centeredText(
+                    font,
+                    Component.translatable("screen.justvoice.group_voice"),
+                    contentLeft + contentWidth / 2,
+                    54,
+                    0xFF8FE0B9
+            );
+            graphics.centeredText(
+                    font,
+                    Component.translatable("screen.justvoice.group_levels"),
+                    secondaryLeft + secondaryWidth / 2,
+                    54,
+                    0xFF9EC8F2
+            );
+            graphics.fill(contentLeft, 64, contentLeft + contentWidth, 65, 0xFF408C70);
+            graphics.fill(secondaryLeft, 64, secondaryLeft + secondaryWidth, 65, 0xFF527FAF);
+            graphics.fill(compactDividerX, 68, compactDividerX + 1, height - 50, 0x665B6675);
+            int voiceStatusColor = settings.isEnabled() ? 0xFF55D69A : 0xFFE16F76;
+            graphics.fill(contentLeft + 7, 76, contentLeft + 12, 81, voiceStatusColor);
+            graphics.fill(
+                    contentLeft + 7,
+                    102,
+                    contentLeft + 12,
+                    107,
+                    settings.isTogglePushToTalk() ? 0xFF75B8F0 : 0xFFE5B85C
+            );
+        } else {
+            graphics.centeredText(
+                    font,
+                    Component.translatable("screen.justvoice.microphone_icon"),
+                    width / 2,
+                    iconCards.isEmpty() ? 0 : iconCards.getFirst().y() - 13,
+                    0xFFE3E6EB
+            );
+        }
 
         for (IconCard card : iconCards) {
             boolean selected = settings.microphoneIcon().equals(card.id());
@@ -483,13 +751,17 @@ public final class JustVoiceConfigScreen extends Screen {
             if (!"custom".equals(card.id())) {
                 Component name = Component.literal(card.id().substring(1));
                 graphics.centeredText(font, name,
-                        card.x() + ICON_CARD_SIZE / 2, card.y() + 29, 0xFFDDDFE4);
+                        card.x() + ICON_CARD_SIZE / 2, card.y() + 25, 0xFFDDDFE4);
             }
         }
     }
 
     @Override
     public void onClose() {
+        var session = JustVoiceClient.getActiveSessionManager();
+        if (session != null && session.isMicrophoneTestActive()) {
+            session.stopMicrophoneTest();
+        }
         Minecraft.getInstance().gui.setScreen(parent);
     }
 }
