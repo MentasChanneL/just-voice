@@ -20,7 +20,9 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.PlayerSkin;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /** Per-player volume and mute controls. Preferences are persisted by case-insensitive nickname. */
 public final class JustVoicePlayersScreen extends Screen {
@@ -185,6 +187,18 @@ public final class JustVoicePlayersScreen extends Screen {
             float partialTick
     ) {
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+
+        // PEER_PROFILE may update a participant's color while this screen is open.
+        // Refresh the displayed profiles without recreating volume and mute controls.
+        if (session != null && !players.isEmpty()) {
+            Map<Long, VoicePeerProfile> latestProfiles = new HashMap<>();
+            for (VoicePeerProfile profile : session.getRemoteRoomMembers()) {
+                latestProfiles.put(profile.peerId(), profile);
+            }
+            players = players.stream()
+                    .map(previous -> latestProfiles.getOrDefault(previous.peerId(), previous))
+                    .toList();
+        }
         graphics.centeredText(font, title, width / 2, 22, 0xFFFFFFFF);
 
         int panelWidth = Math.min(400, width - 24);
