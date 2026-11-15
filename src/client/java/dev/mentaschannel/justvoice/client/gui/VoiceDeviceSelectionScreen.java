@@ -68,7 +68,7 @@ public final class VoiceDeviceSelectionScreen extends Screen {
         for (int index = first; index < last; index++) {
             String device = devices.get(index);
             boolean selected = device.equals(selectedDevice);
-            Component label = Component.literal((selected ? "✓ " : "") + VoiceSettings.displayDevice(device));
+            Component label = Component.literal((selected ? "✔ " : "") + VoiceSettings.displayDevice(device));
             addRenderableWidget(Button.builder(label, button -> chooseDevice(device))
                     .bounds(left, top + (index - first) * ROW_HEIGHT, buttonWidth, 20)
                     .build());

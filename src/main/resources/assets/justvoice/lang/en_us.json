@@ -76,7 +76,7 @@
   "message.justvoice.mic_test_stopped": "Microphone test stopped.",
   "screen.justvoice.ptt_hold": "Push-to-talk: Hold key to speak",
   "screen.justvoice.ptt_toggle": "Push-to-talk: Press key to toggle microphone",
-  "screen.justvoice.mic_test_start": "Test microphone — hear yourself",
+  "screen.justvoice.mic_test_start": "Test microphone",
   "screen.justvoice.mic_test_stop": "Stop microphone test",
   "screen.justvoice.mic_test_tooltip": "Local microphone monitoring only. Your voice is not sent to the room during this test.",
   "screen.justvoice.input_devices_title": "Choose microphone",
