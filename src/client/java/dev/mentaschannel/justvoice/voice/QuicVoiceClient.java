@@ -9,14 +9,19 @@ import tech.kwik.core.QuicClientConnection;
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
 import java.io.InputStream;
+import java.net.Inet6Address;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.security.KeyStore;
+import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -101,7 +106,17 @@ public final class QuicVoiceClient implements AutoCloseable {
                 .maxIdleTimeout(Duration.ofSeconds(120))
                 .enableDatagramExtension();
 
-        if (credentials.certificateFile() != null) {
+        byte[] expectedIpAddress = parseIpAddress(credentials.host());
+        if (expectedIpAddress != null) {
+            // Kwik's current hostname verifier only matches dNSName SANs. For
+            // IP literals, replace that check with an exact iPAddress SAN
+            // comparison while retaining normal certificate-chain validation.
+            X509TrustManager delegate = credentials.certificateFile() == null
+                    ? loadSystemTrustManager()
+                    : loadTrustManager(credentials.certificateFile());
+            builder.noServerHostnameVerification();
+            builder.customTrustManager(new IpAddressTrustManager(delegate, expectedIpAddress));
+        } else if (credentials.certificateFile() != null) {
             builder.customTrustManager(loadTrustManager(credentials.certificateFile()));
         }
 
@@ -165,11 +180,131 @@ public final class QuicVoiceClient implements AutoCloseable {
                 TrustManagerFactory.getDefaultAlgorithm()
         );
         factory.init(trustStore);
+        return findX509TrustManager(factory);
+    }
+
+    private static X509TrustManager loadSystemTrustManager() throws Exception {
+        TrustManagerFactory factory = TrustManagerFactory.getInstance(
+                TrustManagerFactory.getDefaultAlgorithm()
+        );
+        factory.init((KeyStore) null);
+        return findX509TrustManager(factory);
+    }
+
+    private static X509TrustManager findX509TrustManager(TrustManagerFactory factory) {
         return Arrays.stream(factory.getTrustManagers())
                 .filter(X509TrustManager.class::isInstance)
                 .map(X509TrustManager.class::cast)
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("No X.509 trust manager available"));
+    }
+
+    /**
+     * Parses only numeric IPv4/IPv6 literals. IPv6 parsing is attempted only
+     * when a colon is present, so this method never resolves a DNS hostname.
+     */
+    private static byte[] parseIpAddress(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        String address = value.trim();
+        if (address.indexOf(':') >= 0) {
+            if (address.indexOf('%') >= 0) {
+                return null;
+            }
+            try {
+                InetAddress parsed = InetAddress.getByName(address);
+                return parsed instanceof Inet6Address ? parsed.getAddress() : null;
+            } catch (UnknownHostException exception) {
+                return null;
+            }
+        }
+
+        String[] octets = address.split("\\.", -1);
+        if (octets.length != 4) {
+            return null;
+        }
+
+        byte[] result = new byte[4];
+        for (int i = 0; i < octets.length; i++) {
+            String octet = octets[i];
+            if (octet.isEmpty() || (octet.length() > 1 && octet.charAt(0) == '0')) {
+                return null;
+            }
+            for (int j = 0; j < octet.length(); j++) {
+                if (octet.charAt(j) < '0' || octet.charAt(j) > '9') {
+                    return null;
+                }
+            }
+            try {
+                int parsed = Integer.parseInt(octet);
+                if (parsed > 255) {
+                    return null;
+                }
+                result[i] = (byte) parsed;
+            } catch (NumberFormatException exception) {
+                return null;
+            }
+        }
+        return result;
+    }
+
+    private static void verifyIpSubjectAlternativeName(
+            X509Certificate certificate,
+            byte[] expectedAddress
+    ) throws CertificateException {
+        Collection<List<?>> subjectAlternativeNames = certificate.getSubjectAlternativeNames();
+        if (subjectAlternativeNames != null) {
+            for (List<?> entry : subjectAlternativeNames) {
+                if (entry.size() < 2 || !Integer.valueOf(7).equals(entry.get(0))) {
+                    continue;
+                }
+
+                Object value = entry.get(1);
+                byte[] sanAddress = value instanceof byte[] bytes
+                        ? bytes
+                        : value instanceof String text ? parseIpAddress(text) : null;
+                if (sanAddress != null && Arrays.equals(expectedAddress, sanAddress)) {
+                    return;
+                }
+            }
+        }
+
+        throw new CertificateException(
+                "Server certificate does not contain the configured IP address in its IP subject alternative names"
+        );
+    }
+
+    private static final class IpAddressTrustManager implements X509TrustManager {
+        private final X509TrustManager delegate;
+        private final byte[] expectedAddress;
+
+        private IpAddressTrustManager(X509TrustManager delegate, byte[] expectedAddress) {
+            this.delegate = delegate;
+            this.expectedAddress = expectedAddress.clone();
+        }
+
+        @Override
+        public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+            delegate.checkClientTrusted(chain, authType);
+        }
+
+        @Override
+        public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+            // First validate the chain against the JVM roots or the explicitly
+            // configured CA. Only then accept the certificate for this IP.
+            delegate.checkServerTrusted(chain, authType);
+            if (chain == null || chain.length == 0 || chain[0] == null) {
+                throw new CertificateException("Server did not provide a certificate");
+            }
+            verifyIpSubjectAlternativeName(chain[0], expectedAddress);
+        }
+
+        @Override
+        public X509Certificate[] getAcceptedIssuers() {
+            return delegate.getAcceptedIssuers();
+        }
     }
 
     private void handleDatagram(byte[] data) {
