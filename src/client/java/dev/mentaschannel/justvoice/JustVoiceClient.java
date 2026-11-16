@@ -17,7 +17,7 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
@@ -74,19 +74,19 @@ public final class JustVoiceClient implements ClientModInitializer {
         registerPauseMenuButton();
 
         String category = "key.category.justvoice.voice";
-        pushToTalk = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+        pushToTalk = KeyBindingHelper.registerKeyBinding(new KeyMapping(
                 "key.justvoice.push_to_talk",
                 InputConstants.Type.KEYBOARD,
                 InputConstants.KEY_V,
                 category
         ));
-        openSettings = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+        openSettings = KeyBindingHelper.registerKeyBinding(new KeyMapping(
                 "key.justvoice.open_settings",
                 InputConstants.Type.KEYBOARD,
                 0,
                 category
         ));
-        openPlayers = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+        openPlayers = KeyBindingHelper.registerKeyBinding(new KeyMapping(
                 "key.justvoice.open_players",
                 InputConstants.Type.KEYBOARD,
                 0,
