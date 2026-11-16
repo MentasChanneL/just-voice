@@ -82,13 +82,13 @@ public final class JustVoiceClient implements ClientModInitializer {
         ));
         openSettings = KeyBindingHelper.registerKeyBinding(new KeyMapping(
                 "key.justvoice.open_settings",
-                InputConstants.Type.KEYBOARD,
+                InputConstants.Type.KEYSYM,
                 0,
                 category
         ));
         openPlayers = KeyBindingHelper.registerKeyBinding(new KeyMapping(
                 "key.justvoice.open_players",
-                InputConstants.Type.KEYBOARD,
+                InputConstants.Type.KEYSYM,
                 0,
                 category
         ));
