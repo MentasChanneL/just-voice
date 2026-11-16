@@ -15,7 +15,7 @@ import dev.mentaschannel.justvoice.voice.VoiceSettings;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
-import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
@@ -97,7 +97,7 @@ public final class JustVoiceClient implements ClientModInitializer {
             LOGGER.warn("Just Voice server is not configured; edit config/just-voice/just-voice.properties.");
         }
 
-        registerClientCommands();
+        registerClientCommandManager();
 
         ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
             if (!VoiceDirective.hasMarker(message.getString())) {
@@ -318,31 +318,31 @@ public final class JustVoiceClient implements ClientModInitializer {
         }
     }
 
-    private void registerClientCommands() {
+    private void registerClientCommandManager() {
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) ->
-                dispatcher.register(ClientCommands.literal("justvoice")
-                        .then(ClientCommands.literal("on").executes(context -> {
+                dispatcher.register(ClientCommandManager.literal("justvoice")
+                        .then(ClientCommandManager.literal("on").executes(context -> {
                             sessionManager.setEnabled(true);
                             return 1;
                         }))
-                        .then(ClientCommands.literal("off").executes(context -> {
+                        .then(ClientCommandManager.literal("off").executes(context -> {
                             resetPushToTalkToggle();
                             sessionManager.setEnabled(false);
                             return 1;
                         }))
-                        .then(ClientCommands.literal("reconnect").executes(context -> {
+                        .then(ClientCommandManager.literal("reconnect").executes(context -> {
                             sessionManager.reconnect();
                             return 1;
                         }))
-                        .then(ClientCommands.literal("list").executes(context -> {
+                        .then(ClientCommandManager.literal("list").executes(context -> {
                             showRoomRoster();
                             return 1;
                         }))
-                        .then(ClientCommands.literal("players").executes(context -> {
+                        .then(ClientCommandManager.literal("players").executes(context -> {
                             openPlayersScreen();
                             return 1;
                         }))
-                        .then(ClientCommands.literal("settings").executes(context -> {
+                        .then(ClientCommandManager.literal("settings").executes(context -> {
                             openSettingsScreen();
                             return 1;
                         }))
