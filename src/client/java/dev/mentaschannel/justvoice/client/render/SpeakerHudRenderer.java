@@ -45,7 +45,7 @@ public final class SpeakerHudRenderer {
 
     private static void render(GuiGraphics graphics, DeltaTracker deltaTracker) {
         Minecraft client = Minecraft.getInstance();
-        if (client.player == null || false) {
+        if (client.player == null) {
             return;
         }
 
