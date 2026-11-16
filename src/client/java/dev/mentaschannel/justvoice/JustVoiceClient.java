@@ -76,7 +76,7 @@ public final class JustVoiceClient implements ClientModInitializer {
         String category = "key.category.justvoice.voice";
         pushToTalk = KeyBindingHelper.registerKeyBinding(new KeyMapping(
                 "key.justvoice.push_to_talk",
-                InputConstants.Type.KEYBOARD,
+                InputConstants.Type.KEYSYM,
                 InputConstants.KEY_V,
                 category
         ));
@@ -175,7 +175,7 @@ public final class JustVoiceClient implements ClientModInitializer {
                 return;
             }
 
-            List<AbstractWidget> widgets = Screens.getWidgets(screen);
+            List<Button> widgets = Screens.getButtons(screen);
             List<AbstractWidget> iconButtons = findPauseIconRow(widgets, minimumButtons);
             if (iconButtons.isEmpty()) {
                 LOGGER.warn("Could not find a small icon row on {}; Just Voice shortcut was not added.",
@@ -226,7 +226,7 @@ public final class JustVoiceClient implements ClientModInitializer {
     }
 
     private static List<AbstractWidget> findPauseIconRow(
-            List<AbstractWidget> widgets,
+            List<? extends AbstractWidget> widgets,
             int minimumButtons
     ) {
         Map<Integer, List<AbstractWidget>> rows = new HashMap<>();
@@ -313,7 +313,7 @@ public final class JustVoiceClient implements ClientModInitializer {
                     20,
                     20,
                     20,
-                    0x00FFFFFF | (Math.round(getAlpha() * 255.0f) << 24)
+                    0x00FFFFFF | (Math.round(alpha * 255.0f) << 24)
             );
         }
     }
