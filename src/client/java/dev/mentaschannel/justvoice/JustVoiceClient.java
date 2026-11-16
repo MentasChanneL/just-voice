@@ -150,7 +150,7 @@ public final class JustVoiceClient implements ClientModInitializer {
             sessionManager.tick();
         });
 
-        ClientPlayConnectionEvents.DISCONNECT.register((_, _) -> {
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, clientConnection) -> {
             resetPushToTalkToggle();
             if (sessionManager != null) {
                 sessionManager.closeSilently();
