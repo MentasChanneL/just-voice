@@ -175,7 +175,7 @@ public final class JustVoiceClient implements ClientModInitializer {
                 return;
             }
 
-            List<Button> widgets = Screens.getButtons(screen);
+            List<AbstractWidget> widgets = Screens.getButtons(screen);
             List<AbstractWidget> iconButtons = findPauseIconRow(widgets, minimumButtons);
             if (iconButtons.isEmpty()) {
                 LOGGER.warn("Could not find a small icon row on {}; Just Voice shortcut was not added.",
