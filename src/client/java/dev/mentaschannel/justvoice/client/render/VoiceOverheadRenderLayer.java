@@ -38,7 +38,7 @@ public final class VoiceOverheadRenderLayer extends RenderLayer<PlayerRenderStat
 
     public static void register() {
         LivingEntityFeatureRendererRegistrationCallback.EVENT.register(
-                (entityType, entityRenderer, registrationHelper) -> {
+                (entityType, entityRenderer, registrationHelper, context) -> {
                     if (entityType == EntityType.PLAYER && entityRenderer instanceof PlayerRenderer playerRenderer) {
                         registrationHelper.register(new VoiceOverheadRenderLayer(playerRenderer));
                     }
