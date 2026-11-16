@@ -77,7 +77,7 @@ public final class VoiceDeviceSelectionScreen extends Screen {
         int controlsY = Math.min(height - 54, top + ROWS_PER_PAGE * ROW_HEIGHT + 8);
         if (page > 0) {
             addRenderableWidget(Button.builder(Component.translatable("screen.justvoice.previous"), button ->
-                            Minecraft.getInstance().gui.setScreen(
+                            Minecraft.getInstance().setScreen(
                                     new VoiceDeviceSelectionScreen(parent, type, page - 1)
                             ))
                     .bounds(left, controlsY, 90, 20)
@@ -85,7 +85,7 @@ public final class VoiceDeviceSelectionScreen extends Screen {
         }
         if (page + 1 < pageCount) {
             addRenderableWidget(Button.builder(Component.translatable("screen.justvoice.next"), button ->
-                            Minecraft.getInstance().gui.setScreen(
+                            Minecraft.getInstance().setScreen(
                                     new VoiceDeviceSelectionScreen(parent, type, page + 1)
                             ))
                     .bounds(left + buttonWidth - 90, controlsY, 90, 20)
@@ -115,19 +115,19 @@ public final class VoiceDeviceSelectionScreen extends Screen {
                 session.restartPlayback();
             }
         }
-        Minecraft.getInstance().gui.setScreen(parent);
+        Minecraft.getInstance().setScreen(parent);
     }
 
     @Override
-    public void extractRenderState(
-            net.minecraft.client.gui.GuiGraphicsExtractor graphics,
+    public void render(
+            net.minecraft.client.gui.GuiGraphics graphics,
             int mouseX,
             int mouseY,
             float partialTick
     ) {
-        super.extractRenderState(graphics, mouseX, mouseY, partialTick);
-        graphics.centeredText(font, title, width / 2, 22, 0xFFFFFFFF);
-        graphics.centeredText(
+        super.render(graphics, mouseX, mouseY, partialTick);
+        graphics.drawCenteredString(font, title, width / 2, 22, 0xFFFFFFFF);
+        graphics.drawCenteredString(
                 font,
                 Component.translatable("screen.justvoice.device_list_help"),
                 width / 2,
@@ -136,7 +136,7 @@ public final class VoiceDeviceSelectionScreen extends Screen {
         );
 
         if (devices.isEmpty()) {
-            graphics.centeredText(
+            graphics.drawCenteredString(
                     font,
                     Component.translatable("screen.justvoice.no_audio_devices"),
                     width / 2,
@@ -146,7 +146,7 @@ public final class VoiceDeviceSelectionScreen extends Screen {
         }
 
         int page = Math.min(requestedPage, pageCount - 1);
-        graphics.centeredText(
+        graphics.drawCenteredString(
                 font,
                 Component.translatable("screen.justvoice.page", page + 1, pageCount),
                 width / 2,
@@ -157,6 +157,6 @@ public final class VoiceDeviceSelectionScreen extends Screen {
 
     @Override
     public void onClose() {
-        Minecraft.getInstance().gui.setScreen(parent);
+        Minecraft.getInstance().setScreen(parent);
     }
 }

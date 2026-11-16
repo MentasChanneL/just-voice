@@ -7,7 +7,7 @@ import dev.mentaschannel.justvoice.voice.VoiceSettings;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -17,14 +17,14 @@ import java.util.Locale;
 
 /** Loads bundled or user-provided microphone textures for the HUD and settings preview. */
 public final class MicIconManager {
-    private static final Identifier CUSTOM_TEXTURE = Identifier.fromNamespaceAndPath(
+    private static final ResourceLocation CUSTOM_TEXTURE = ResourceLocation.fromNamespaceAndPath(
             JustVoiceClient.MOD_ID,
             "dynamic/microphone_custom"
     );
     private static final int MAX_FILE_BYTES = 2 * 1024 * 1024;
     private static final int MAX_DIMENSION = 512;
 
-    private static volatile Identifier currentTexture = builtinTexture("v2");
+    private static volatile ResourceLocation currentTexture = builtinTexture("v2");
     private static volatile int currentWidth = 16;
     private static volatile int currentHeight = 16;
     private static volatile boolean customAvailable;
@@ -115,7 +115,7 @@ public final class MicIconManager {
         reload(settings);
     }
 
-    public static Identifier texture() {
+    public static ResourceLocation texture() {
         return currentTexture;
     }
 
@@ -131,7 +131,7 @@ public final class MicIconManager {
         return customAvailable;
     }
 
-    public static Identifier previewTexture(String selection) {
+    public static ResourceLocation previewTexture(String selection) {
         return "custom".equals(selection) ? CUSTOM_TEXTURE : builtinTexture(selection);
     }
 
@@ -158,8 +158,8 @@ public final class MicIconManager {
         return width > 0 && height > 0 && width <= MAX_DIMENSION && height <= MAX_DIMENSION;
     }
 
-    private static Identifier builtinTexture(String name) {
-        return Identifier.fromNamespaceAndPath(
+    private static ResourceLocation builtinTexture(String name) {
+        return ResourceLocation.fromNamespaceAndPath(
                 JustVoiceClient.MOD_ID,
                 "textures/gui/sprites/mics/" + name + ".png"
         );

@@ -2,7 +2,7 @@ package dev.mentaschannel.justvoice;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.*;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 
 public final class JustVoiceChat {
     private JustVoiceChat() {}
@@ -33,7 +33,7 @@ public final class JustVoiceChat {
 
     private static void send(Component message) {
         Minecraft client = Minecraft.getInstance();
-        client.execute(() -> client.gui.hud.getChat().addClientSystemMessage(
+        client.execute(() -> client.gui.getChat().addMessage(
                 Component.empty().append(message).setStyle(Style.EMPTY.withHoverEvent(new HoverEvent.ShowText(icon().append(text(" ")).append(lang("message.justvoice.is_justvoice_message")))))
         ));
     }
@@ -46,18 +46,18 @@ public final class JustVoiceChat {
     }
 
     private static MutableComponent text(String text, int color) {
-        return Component.literal(text).setStyle(Style.EMPTY.withFont(FontDescription.DEFAULT).withColor(color));
+        return Component.literal(text).setStyle(Style.EMPTY.withColor(color));
     }
 
     private static MutableComponent text(String text) {
-        return Component.literal(text).setStyle(Style.EMPTY.withFont(FontDescription.DEFAULT));
+        return Component.literal(text).setStyle(Style.EMPTY);
     }
 
     private static MutableComponent lang(String key, Object ... args) {
-        return Component.translatable(key, args).setStyle(Style.EMPTY.withFont(FontDescription.DEFAULT));
+        return Component.translatable(key, args).setStyle(Style.EMPTY);
     }
 
     private static MutableComponent icon() {
-        return Component.literal("0").setStyle(Style.EMPTY.withFont(new FontDescription.Resource(Identifier.fromNamespaceAndPath("justvoice", "icons"))));
+        return Component.literal("0").setStyle(Style.EMPTY.withFont(ResourceLocation.fromNamespaceAndPath("justvoice", "icons")));
     }
 }

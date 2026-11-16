@@ -8,14 +8,14 @@ import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.minecraft.client.AttackIndicatorStatus;
 import net.minecraft.client.DeltaTracker;
-import net.minecraft.client.gui.components.PlayerFaceExtractor;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.PlayerFaceRenderer;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.resources.DefaultPlayerSkin;
-import net.minecraft.resources.Identifier;
-import net.minecraft.world.entity.player.PlayerSkin;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.client.resources.PlayerSkin;
 
 import java.util.List;
 
@@ -38,14 +38,14 @@ public final class SpeakerHudRenderer {
     public static void register() {
         HudElementRegistry.attachElementBefore(
                 VanillaHudElements.CHAT,
-                Identifier.fromNamespaceAndPath(JustVoiceClient.MOD_ID, "speaker_hud"),
+                ResourceLocation.fromNamespaceAndPath(JustVoiceClient.MOD_ID, "speaker_hud"),
                 SpeakerHudRenderer::render
         );
     }
 
-    private static void render(GuiGraphicsExtractor graphics, DeltaTracker deltaTracker) {
+    private static void render(GuiGraphics graphics, DeltaTracker deltaTracker) {
         Minecraft client = Minecraft.getInstance();
-        if (client.player == null || client.gui.hud.isHidden()) {
+        if (client.player == null || false) {
             return;
         }
 
@@ -59,7 +59,7 @@ public final class SpeakerHudRenderer {
     }
 
     private static void renderSpeakers(
-            GuiGraphicsExtractor graphics,
+            GuiGraphics graphics,
             Minecraft client,
             List<VoiceSessionManager.SpeakerHudEntry> speakers
     ) {
@@ -96,7 +96,7 @@ public final class SpeakerHudRenderer {
                     bottom,
                     withOpacity(background, opacity)
             );
-            graphics.outline(
+            graphics.renderOutline(
                     x,
                     y,
                     panelWidth,
@@ -105,7 +105,7 @@ public final class SpeakerHudRenderer {
             );
 
             PlayerSkin skin = resolvePlayerSkin(client, speaker.name());
-            PlayerFaceExtractor.extractRenderState(
+            PlayerFaceRenderer.draw(
                     graphics,
                     skin,
                     x + 4,
@@ -121,7 +121,7 @@ public final class SpeakerHudRenderer {
                 label = client.font.plainSubstrByWidth(label, maxNameWidth - 8) + "…";
             }
 
-            graphics.text(
+            graphics.drawString(
                     client.font,
                     label,
                     textX,
@@ -153,7 +153,7 @@ public final class SpeakerHudRenderer {
      */
     private static PlayerSkin resolvePlayerSkin(Minecraft client, String playerName) {
         if (client.getConnection() != null) {
-            PlayerInfo playerInfo = client.getConnection().getPlayerInfoIgnoreCase(playerName);
+            PlayerInfo playerInfo = client.getConnection().getPlayerInfo(playerName);
             if (playerInfo != null) {
                 PlayerSkin skin = playerInfo.getSkin();
                 if (skin != null) {
@@ -166,7 +166,7 @@ public final class SpeakerHudRenderer {
     }
 
     private static void renderMicrophoneIcon(
-            GuiGraphicsExtractor graphics,
+            GuiGraphics graphics,
             VoiceSessionManager manager
     ) {
         if (!manager.isConnected()) {
@@ -232,7 +232,7 @@ public final class SpeakerHudRenderer {
     }
 
     private static void drawMiniMeter(
-            GuiGraphicsExtractor graphics,
+            GuiGraphics graphics,
             int x,
             int y,
             int width,

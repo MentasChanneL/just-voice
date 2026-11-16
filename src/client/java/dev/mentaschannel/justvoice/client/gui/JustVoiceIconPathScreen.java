@@ -4,7 +4,7 @@ import dev.mentaschannel.justvoice.JustVoiceChat;
 
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
@@ -75,7 +75,7 @@ public final class JustVoiceIconPathScreen extends Screen {
             }
 
             Path selected = Path.of(resolved).toAbsolutePath().normalize();
-            Minecraft.getInstance().gui.setScreen(parent);
+            Minecraft.getInstance().setScreen(parent);
             importAction.accept(selected);
         } catch (RuntimeException exception) {
             JustVoiceChat.error("screen.justvoice.icon_import_failed");
@@ -83,15 +83,15 @@ public final class JustVoiceIconPathScreen extends Screen {
     }
 
     @Override
-    public void extractRenderState(
-            GuiGraphicsExtractor graphics,
+    public void render(
+            GuiGraphics graphics,
             int mouseX,
             int mouseY,
             float partialTick
     ) {
-        super.extractRenderState(graphics, mouseX, mouseY, partialTick);
-        graphics.centeredText(font, title, width / 2, 34, 0xFFFFFFFF);
-        graphics.centeredText(
+        super.render(graphics, mouseX, mouseY, partialTick);
+        graphics.drawCenteredString(font, title, width / 2, 34, 0xFFFFFFFF);
+        graphics.drawCenteredString(
                 font,
                 Component.translatable("screen.justvoice.icon_path.description"),
                 width / 2,
@@ -102,6 +102,6 @@ public final class JustVoiceIconPathScreen extends Screen {
 
     @Override
     public void onClose() {
-        Minecraft.getInstance().gui.setScreen(parent);
+        Minecraft.getInstance().setScreen(parent);
     }
 }

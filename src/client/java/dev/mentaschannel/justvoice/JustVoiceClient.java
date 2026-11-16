@@ -25,7 +25,7 @@ import net.fabricmc.fabric.api.client.screen.v1.Screens;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
@@ -33,7 +33,7 @@ import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,9 +73,7 @@ public final class JustVoiceClient implements ClientModInitializer {
         VoiceOverheadRenderLayer.register();
         registerPauseMenuButton();
 
-        KeyMapping.Category category = KeyMapping.Category.register(
-                Identifier.fromNamespaceAndPath(MOD_ID, "voice")
-        );
+        String category = "key.category.justvoice.voice";
         pushToTalk = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.justvoice.push_to_talk",
                 InputConstants.Type.KEYBOARD,
@@ -126,7 +124,7 @@ public final class JustVoiceClient implements ClientModInitializer {
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            if (client.gui.screen() == null) {
+            if (client.screen == null) {
                 while (openSettings.consumeClick()) {
                     openSettingsScreen();
                 }
@@ -137,14 +135,14 @@ public final class JustVoiceClient implements ClientModInitializer {
 
             if (voiceSettings.isTogglePushToTalk()) {
                 while (pushToTalk.consumeClick()) {
-                    if (client.gui.screen() == null) {
+                    if (client.screen == null) {
                         togglePushToTalkDown = !togglePushToTalkDown;
                     }
                 }
                 sessionManager.setPushToTalk(togglePushToTalkDown);
             } else {
                 togglePushToTalkDown = false;
-                sessionManager.setPushToTalk(client.gui.screen() == null && pushToTalk.isDown());
+                sessionManager.setPushToTalk(client.screen == null && pushToTalk.isDown());
                 while (pushToTalk.consumeClick()) {
                     // Drain queued click events; hold mode reads the physical key state above.
                 }
@@ -221,7 +219,7 @@ public final class JustVoiceClient implements ClientModInitializer {
                     iconY,
                     iconWidth,
                     iconHeight,
-                    () -> client.gui.setScreen(new JustVoicePlayersScreen(screen, 0))
+                    () -> client.setScreen(new JustVoicePlayersScreen(screen, 0))
             );
             widgets.add(voiceButton);
         });
@@ -287,8 +285,8 @@ public final class JustVoiceClient implements ClientModInitializer {
         }
 
         @Override
-        protected void extractContents(
-                GuiGraphicsExtractor graphics,
+        protected void renderWidget(
+                GuiGraphics graphics,
                 int mouseX,
                 int mouseY,
                 float partialTick
@@ -298,7 +296,7 @@ public final class JustVoiceClient implements ClientModInitializer {
                     : isHoveredOrFocused()
                             ? "mic_button_highlighted.png"
                             : "mic_button.png";
-            Identifier texture = Identifier.fromNamespaceAndPath(
+            ResourceLocation texture = ResourceLocation.fromNamespaceAndPath(
                     MOD_ID,
                     "textures/gui/sprites/widget/" + textureName
             );
@@ -356,7 +354,7 @@ public final class JustVoiceClient implements ClientModInitializer {
         Minecraft client = Minecraft.getInstance();
         client.execute(() -> {
             try {
-                client.gui.setScreen(new JustVoiceConfigScreen(client.gui.screen()));
+                client.setScreen(new JustVoiceConfigScreen(client.screen));
                 JustVoiceChat.info("command.justvoice.settings_opened");
             } catch (RuntimeException exception) {
                 LOGGER.error("Could not open Just Voice settings screen.", exception);
@@ -369,7 +367,7 @@ public final class JustVoiceClient implements ClientModInitializer {
         Minecraft client = Minecraft.getInstance();
         client.execute(() -> {
             try {
-                client.gui.setScreen(new JustVoicePlayersScreen(client.gui.screen(), 0));
+                client.setScreen(new JustVoicePlayersScreen(client.screen, 0));
                 JustVoiceChat.info("command.justvoice.manage_opened");
             } catch (RuntimeException exception) {
                 LOGGER.error("Could not open Just Voice participant screen.", exception);
