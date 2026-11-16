@@ -32,8 +32,8 @@ dependencies {
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 
     clientCompileOnly "net.fabricmc:sponge-mixin:0.15.5+mixin.0.8.7"
-    annotationProcessor "net.fabricmc:sponge-mixin:0.15.5+mixin.0.8.7"
-    modClientCompileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
+    clientAnnotationProcessor "net.fabricmc:sponge-mixin:0.15.5+mixin.0.8.7"
+    clientCompileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
 
     include(implementation("tech.kwik:kwik:0.12.2"))
     include(implementation("tech.kwik:agent15:4.0"))
