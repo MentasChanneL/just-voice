@@ -3,6 +3,7 @@
   "id": "justvoice",
   "version": "${version}",
   "name": "Just Voice",
+  "icon": "assets/justvoice/textures/icon.png",
   "description": "Client-side push-to-talk voice chat for the standalone Just Voice QUIC server.",
   "authors": [
     "MentasChanneL"
