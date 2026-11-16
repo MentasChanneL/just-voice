@@ -171,7 +171,7 @@ public final class JustVoicePlayersScreen extends Screen {
     private PlayerSkin resolvePlayerSkin(String playerName) {
         Minecraft client = Minecraft.getInstance();
         if (client.getConnection() != null) {
-            PlayerInfo info = client.getConnection().getPlayerInfoIgnoreCase(playerName);
+            PlayerInfo info = client.getConnection().getPlayerInfo(playerName);
             if (info != null && info.getSkin() != null) {
                 return info.getSkin();
             }
