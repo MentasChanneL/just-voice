@@ -4,9 +4,11 @@
   "version": "${version}",
   "name": "Just Voice",
   "icon": "assets/justvoice/textures/icon.png",
-  "description": "Client-side push-to-talk voice chat for the standalone Just Voice QUIC server.",
+  "description": "Мод для общения в голосовом чате, мирах JustMC Creative+. В мир необходимо установить дополнительный модуль _2M3V_/justvoice",
   "authors": [
-    "MentasChanneL"
+    "ChatGPT",
+    "2M3V",
+    "Falanta"
   ],
   "contact": {
     "sources": "https://github.com/MentasChanneL/just-voice",
