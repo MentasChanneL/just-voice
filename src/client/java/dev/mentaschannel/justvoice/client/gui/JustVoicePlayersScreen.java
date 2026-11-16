@@ -232,7 +232,7 @@ public final class JustVoicePlayersScreen extends Screen {
             int color = profile.argbColor();
             graphics.fill(left, y, left + panelWidth, y + ROW_HEIGHT - 2, 0xA810141D);
             graphics.renderOutline(left, y, panelWidth, ROW_HEIGHT - 2, color);
-            PlayerFaceRenderer.render(
+            PlayerFaceRenderer.draw(
                     graphics,
                     resolvePlayerSkin(profile.name()),
                     left + 6,
