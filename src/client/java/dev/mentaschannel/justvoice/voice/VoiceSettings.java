@@ -230,7 +230,7 @@ public final class VoiceSettings {
         try {
             Minecraft client = Minecraft.getInstance();
             if (client.getSoundManager() != null) {
-                client.getSoundManager().getSoundDevices().stream()
+                client.getSoundManager().getAvailableSoundDevices().stream()
                         .filter(name -> name != null && !name.isBlank())
                         .distinct()
                         .forEach(result::add);
