@@ -166,63 +166,137 @@ public final class JustVoiceClient implements ClientModInitializer {
      */
     private void registerPauseMenuButton() {
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
-            int minimumButtons;
-            if (screen instanceof PauseScreen pauseScreen && pauseScreen.showsPauseMenu()) {
-                minimumButtons = 3;
-            } else if (screen instanceof TitleScreen) {
-                minimumButtons = 2;
-            } else {
-                return;
+            if (screen instanceof TitleScreen) {
+                addTitleScreenButton(client, screen);
+            } else if (screen instanceof PauseScreen pauseScreen && pauseScreen.showsPauseMenu()) {
+                addPauseScreenButton(client, screen);
             }
-
-            List<AbstractWidget> widgets = Screens.getButtons(screen);
-            List<AbstractWidget> iconButtons = findPauseIconRow(widgets, minimumButtons);
-            if (iconButtons.isEmpty()) {
-                LOGGER.warn("Could not find a small icon row on {}; Just Voice shortcut was not added.",
-                        screen.getClass().getSimpleName());
-                return;
-            }
-
-            iconButtons.sort(Comparator.comparingInt(AbstractWidget::getX));
-            AbstractWidget first = iconButtons.getFirst();
-            int iconWidth = first.getWidth();
-            int iconHeight = first.getHeight();
-            int iconY = first.getY();
-
-            if (iconButtons.stream().anyMatch(button ->
-                    Math.abs(button.getWidth() - iconWidth) > 1
-                            || Math.abs(button.getHeight() - iconHeight) > 1
-                            || Math.abs(button.getY() - iconY) > 1)) {
-                LOGGER.warn("Small icon row on {} uses inconsistent button sizes; "
-                        + "Just Voice shortcut was not added.", screen.getClass().getSimpleName());
-                return;
-            }
-
-            int gap = inferIconGap(iconButtons);
-            int itemCount = iconButtons.size() + 1;
-            int rowWidth = itemCount * iconWidth + (itemCount - 1) * gap;
-            int startX = (screen.width - rowWidth) / 2;
-
-            for (int index = 0; index < iconButtons.size(); index++) {
-                AbstractWidget existingButton = iconButtons.get(index);
-                existingButton.setRectangle(
-                        iconWidth,
-                        iconHeight,
-                        startX + index * (iconWidth + gap),
-                        iconY
-                );
-            }
-
-            int voiceButtonX = startX + iconButtons.size() * (iconWidth + gap);
-            Button voiceButton = new PauseMicButton(
-                    voiceButtonX,
-                    iconY,
-                    iconWidth,
-                    iconHeight,
-                    () -> client.setScreen(new JustVoicePlayersScreen(screen, 0))
-            );
-            widgets.add(voiceButton);
         });
+    }
+
+    /**
+     * Adds the microphone icon next to the title-screen utility buttons.
+     * Existing vanilla buttons are deliberately left at their original positions.
+     */
+    private static void addTitleScreenButton(Minecraft client, net.minecraft.client.gui.screens.Screen screen) {
+        List<AbstractWidget> buttons = Screens.getButtons(screen);
+        List<AbstractWidget> iconRow = findPauseIconRow(buttons, 2);
+        if (iconRow.isEmpty()) {
+            LOGGER.warn("Could not find the title-screen utility icon row; Just Voice shortcut was not added.");
+            return;
+        }
+
+        iconRow.sort(Comparator.comparingInt(AbstractWidget::getX));
+        AbstractWidget first = iconRow.getFirst();
+        AbstractWidget last = iconRow.getLast();
+        int iconWidth = first.getWidth();
+        int iconHeight = first.getHeight();
+        int x = last.getRight() + 4;
+        int y = first.getY();
+
+        if (x + iconWidth > screen.width - 6 || intersectsAny(buttons, x, y, iconWidth, iconHeight)) {
+            x = first.getX() - iconWidth - 4;
+        }
+        if (x < 4 || intersectsAny(buttons, x, y, iconWidth, iconHeight)) {
+            LOGGER.warn("No free space beside the title-screen utility icons; Just Voice shortcut was not added.");
+            return;
+        }
+
+        buttons.add(new PauseMicButton(
+                x,
+                y,
+                iconWidth,
+                iconHeight,
+                () -> client.setScreen(new JustVoicePlayersScreen(screen, 0))
+        ));
+    }
+
+    /**
+     * The 1.21.6 pause screen uses a grid of wide buttons, not the small
+     * utility-icon row used by the title screen. Add a normal button in the
+     * first free full-width row without moving any existing controls.
+     */
+    private static void addPauseScreenButton(Minecraft client, net.minecraft.client.gui.screens.Screen screen) {
+        List<AbstractWidget> buttons = Screens.getButtons(screen);
+        int buttonWidth = Math.min(200, screen.width - 24);
+        int buttonHeight = 20;
+        if (buttonWidth < 120) {
+            LOGGER.warn("Pause screen is too narrow for the Just Voice shortcut.");
+            return;
+        }
+
+        int x = (screen.width - buttonWidth) / 2;
+        int lowestButtonBottom = buttons.stream()
+                .mapToInt(AbstractWidget::getBottom)
+                .max()
+                .orElse(screen.height / 2);
+        int y = findFreeButtonRow(
+                buttons,
+                x,
+                buttonWidth,
+                buttonHeight,
+                Math.max(32, lowestButtonBottom + 5),
+                screen.height - buttonHeight - 8
+        );
+
+        // If the bottom of the pause menu is crowded, look for another free
+        // centered row rather than covering an existing button.
+        if (y < 0) {
+            y = findFreeButtonRow(
+                    buttons,
+                    x,
+                    buttonWidth,
+                    buttonHeight,
+                    32,
+                    screen.height - buttonHeight - 8
+            );
+        }
+        if (y < 0) {
+            LOGGER.warn("Could not find a free row on the pause screen; Just Voice shortcut was not added.");
+            return;
+        }
+
+        buttons.add(Button.builder(
+                        Component.translatable("screen.justvoice.pause_button"),
+                        button -> client.setScreen(new JustVoicePlayersScreen(screen, 0))
+                )
+                .bounds(x, y, buttonWidth, buttonHeight)
+                .build());
+    }
+
+    private static int findFreeButtonRow(
+            List<? extends AbstractWidget> buttons,
+            int x,
+            int width,
+            int height,
+            int firstY,
+            int lastY
+    ) {
+        for (int y = firstY; y <= lastY; y += 2) {
+            if (!intersectsAny(buttons, x, y, width, height)) {
+                return y;
+            }
+        }
+        return -1;
+    }
+
+    private static boolean intersectsAny(
+            List<? extends AbstractWidget> buttons,
+            int x,
+            int y,
+            int width,
+            int height
+    ) {
+        for (AbstractWidget widget : buttons) {
+            boolean overlaps = x < widget.getRight()
+                    && x + width > widget.getX()
+                    && y < widget.getBottom()
+                    && y + height > widget.getY();
+            if (overlaps) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static List<AbstractWidget> findPauseIconRow(
@@ -245,28 +319,6 @@ public final class JustVoiceClient implements ClientModInitializer {
                 .filter(row -> row.size() >= minimumButtons)
                 .map(ArrayList::new)
                 .orElseGet(ArrayList::new);
-    }
-
-    private static int inferIconGap(List<? extends AbstractWidget> iconButtons) {
-        if (iconButtons.size() < 2) {
-            return 4;
-        }
-
-        List<? extends AbstractWidget> ordered = iconButtons.stream()
-                .sorted(Comparator.comparingInt(AbstractWidget::getX))
-                .toList();
-        List<Integer> gaps = new ArrayList<>();
-        for (int index = 1; index < ordered.size(); index++) {
-            int gap = ordered.get(index).getX() - ordered.get(index - 1).getRight();
-            if (gap >= 0 && gap <= 12) {
-                gaps.add(gap);
-            }
-        }
-        if (gaps.isEmpty()) {
-            return 4;
-        }
-        gaps.sort(Integer::compareTo);
-        return gaps.get(gaps.size() / 2);
     }
 
     /** A square microphone button with a visible vanilla-like pixel frame. */
@@ -319,34 +371,51 @@ public final class JustVoiceClient implements ClientModInitializer {
     }
 
     private void registerClientCommandManager() {
-        ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) ->
-                dispatcher.register(ClientCommandManager.literal("justvoice")
-                        .then(ClientCommandManager.literal("on").executes(context -> {
-                            sessionManager.setEnabled(true);
-                            return 1;
-                        }))
-                        .then(ClientCommandManager.literal("off").executes(context -> {
-                            resetPushToTalkToggle();
-                            sessionManager.setEnabled(false);
-                            return 1;
-                        }))
-                        .then(ClientCommandManager.literal("reconnect").executes(context -> {
-                            sessionManager.reconnect();
-                            return 1;
-                        }))
-                        .then(ClientCommandManager.literal("list").executes(context -> {
-                            showRoomRoster();
-                            return 1;
-                        }))
-                        .then(ClientCommandManager.literal("players").executes(context -> {
-                            openPlayersScreen();
-                            return 1;
-                        }))
-                        .then(ClientCommandManager.literal("settings").executes(context -> {
-                            openSettingsScreen();
-                            return 1;
-                        }))
-                )
+        ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
+            registerCommandRoot(dispatcher, "justvoice");
+            // A short alias remains usable on servers that already own /justvoice.
+            registerCommandRoot(dispatcher, "jv");
+        });
+    }
+
+    private void registerCommandRoot(
+            com.mojang.brigadier.CommandDispatcher<net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource> dispatcher,
+            String root
+    ) {
+        dispatcher.register(ClientCommandManager.literal(root)
+                .then(ClientCommandManager.literal("on").executes(context -> {
+                    sessionManager.setEnabled(true);
+                    return 1;
+                }))
+                .then(ClientCommandManager.literal("off").executes(context -> {
+                    resetPushToTalkToggle();
+                    sessionManager.setEnabled(false);
+                    return 1;
+                }))
+                .then(ClientCommandManager.literal("reconnect").executes(context -> {
+                    sessionManager.reconnect();
+                    return 1;
+                }))
+                .then(ClientCommandManager.literal("list").executes(context -> {
+                    showRoomRoster();
+                    return 1;
+                }))
+                .then(ClientCommandManager.literal("players").executes(context -> {
+                    openPlayersScreen();
+                    return 1;
+                }))
+                .then(ClientCommandManager.literal("manage").executes(context -> {
+                    openPlayersScreen();
+                    return 1;
+                }))
+                .then(ClientCommandManager.literal("settings").executes(context -> {
+                    openSettingsScreen();
+                    return 1;
+                }))
+                .then(ClientCommandManager.literal("config").executes(context -> {
+                    openSettingsScreen();
+                    return 1;
+                }))
         );
     }
 
